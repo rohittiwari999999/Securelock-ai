@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-android:
-    name: Build APK & Play Store AAB
+    name: Build Signed APK & Play Store AAB
     runs-on: ubuntu-latest
 
     steps:
@@ -47,39 +47,64 @@ jobs:
           gradle-version: '8.11.1'
           gradle-home-cache-cleanup: true
 
-      - name: Decode optional release keystore
+      - name: Configure release signing keystore
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          SECRET_STORE_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          SECRET_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          SECRET_KEY_PASS: ${{ secrets.KEY_PASSWORD }}
         run: |
+          KEYSTORE_FILE="${{ runner.temp }}/release.keystore"
           if [ -n "$KEYSTORE_B64" ]; then
-            echo "$KEYSTORE_B64" | base64 --decode > "${{ runner.temp }}/release.keystore"
-            echo "ANDROID_KEYSTORE_PATH=${{ runner.temp }}/release.keystore" >> "$GITHUB_ENV"
+            echo "$KEYSTORE_B64" | base64 --decode > "$KEYSTORE_FILE"
+            echo "ANDROID_KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
+            echo "KEYSTORE_PASSWORD=$SECRET_STORE_PASS" >> "$GITHUB_ENV"
+            echo "KEY_ALIAS=$SECRET_KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=$SECRET_KEY_PASS" >> "$GITHUB_ENV"
+            echo "Using repository secret release keystore."
           else
-            echo "No ANDROID_KEYSTORE_BASE64 secret set; building signed Debug APK + unsigned Release APK/AAB."
+            keytool -genkeypair -v \
+              -keystore "$KEYSTORE_FILE" \
+              -storetype PKCS12 \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -alias securelock_ci \
+              -storepass securelock_ci_pass \
+              -keypass securelock_ci_pass \
+              -dname "CN=SecureLock AI, OU=Security, O=SecureLock, L=Local, ST=NA, C=US"
+            echo "ANDROID_KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
+            echo "KEYSTORE_PASSWORD=securelock_ci_pass" >> "$GITHUB_ENV"
+            echo "KEY_ALIAS=securelock_ci" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=securelock_ci_pass" >> "$GITHUB_ENV"
+            echo "Generated temporary PKCS12 signing keystore so all APKs & AAB are signed and installable."
           fi
 
-      - name: Run Unit Tests & Build APK / AAB
+      - name: Run Unit Tests & Build Signed APK / AAB
         working-directory: ${{ steps.android.outputs.dir }}
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           gradle testDebugUnitTest assembleDebug bundleRelease --no-daemon --stacktrace
           gradle assembleRelease -PenableAbiSplits=true --no-daemon --stacktrace
 
-      - name: Upload Installable Debug APK
+      - name: Upload Installable Universal Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: SecureLockAI-Debug-APK
-          path: ${{ steps.android.outputs.dir }}/app/build/outputs/apk/debug/*.apk
+          name: SecureLockAI-Installable-APK
+          path: ${{ steps.android.outputs.dir }}/app/build/outputs/apk/release/*universal*.apk
           if-no-files-found: error
 
-      - name: Upload Release APKs
+      - name: Upload All Signed Release APKs (Universal + ABI Splits)
         uses: actions/upload-artifact@v4
         with:
           name: SecureLockAI-Release-APKs
           path: ${{ steps.android.outputs.dir }}/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SecureLockAI-Debug-APK
+          path: ${{ steps.android.outputs.dir }}/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
       - name: Upload Play Store Bundle (AAB)
