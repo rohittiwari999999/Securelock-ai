@@ -1,0 +1,159 @@
+package com.securelock.ai.ui.navigation
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.fragment.app.FragmentActivity
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.securelock.ai.security.SecureStorageRepository
+import com.securelock.ai.service.AppLockSessionManager
+import com.securelock.ai.ui.screens.AppLockScreen
+import com.securelock.ai.ui.screens.CameraPrivacyMonitorScreen
+import com.securelock.ai.ui.screens.DashboardScreen
+import com.securelock.ai.ui.screens.FakeCrashConfigScreen
+import com.securelock.ai.ui.screens.IntruderSelfieScreen
+import com.securelock.ai.ui.screens.LockNotificationsScreen
+import com.securelock.ai.ui.screens.PermissionsManagerScreen
+import com.securelock.ai.ui.screens.PrivateBrowserScreen
+import com.securelock.ai.ui.screens.SettingsScreen
+import com.securelock.ai.ui.screens.StatisticsScreen
+import com.securelock.ai.ui.screens.UnlockScreen
+
+object Routes {
+    const val UNLOCK = "unlock"
+    const val DASHBOARD = "dashboard"
+    const val APP_LOCK = "app_lock"
+    const val INTRUDER_SELFIE = "intruder_selfie"
+    const val LOCK_NOTIFICATIONS = "lock_notifications"
+    const val FAKE_CRASH = "fake_crash"
+    const val CAMERA_MONITOR = "camera_monitor"
+    const val PRIVATE_BROWSER = "private_browser"
+    const val STATISTICS = "statistics"
+    const val SETTINGS = "settings"
+    const val PERMISSIONS = "permissions"
+}
+
+@Composable
+fun SecureLockNavHost(
+    activity: FragmentActivity,
+    repository: SecureStorageRepository
+) {
+    val navController = rememberNavController()
+    val settings by repository.settings.collectAsState()
+    var vaultUnlocked by remember {
+        mutableStateOf(AppLockSessionManager.isVaultUnlocked)
+    }
+
+    val needsSetup = !repository.hasPinConfigured()
+    val startRoute = if (needsSetup || !vaultUnlocked) Routes.UNLOCK else Routes.DASHBOARD
+
+    NavHost(
+        navController = navController,
+        startDestination = startRoute
+    ) {
+        composable(Routes.UNLOCK) {
+            UnlockScreen(
+                activity = activity,
+                repository = repository,
+                targetPackageLabel = "SecureLock AI",
+                isSetupFlow = needsSetup,
+                onUnlocked = {
+                    AppLockSessionManager.unlockVault()
+                    vaultUnlocked = true
+                    navController.navigate(Routes.DASHBOARD) {
+                        popUpTo(Routes.UNLOCK) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        composable(Routes.DASHBOARD) {
+            DashboardScreen(
+                repository = repository,
+                onNavigate = { route -> navController.navigate(route) },
+                onLockNow = {
+                    AppLockSessionManager.lockVault()
+                    vaultUnlocked = false
+                    navController.navigate(Routes.UNLOCK) {
+                        popUpTo(Routes.DASHBOARD) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        composable(Routes.APP_LOCK) {
+            AppLockScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() },
+                onOpenPermissions = { navController.navigate(Routes.PERMISSIONS) }
+            )
+        }
+
+        composable(Routes.INTRUDER_SELFIE) {
+            IntruderSelfieScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(Routes.LOCK_NOTIFICATIONS) {
+            LockNotificationsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(Routes.FAKE_CRASH) {
+            FakeCrashConfigScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() },
+                onTestAuthReturn = {
+                    AppLockSessionManager.lockVault()
+                    vaultUnlocked = false
+                    navController.navigate(Routes.UNLOCK) {
+                        popUpTo(Routes.DASHBOARD) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        composable(Routes.CAMERA_MONITOR) {
+            CameraPrivacyMonitorScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(Routes.PRIVATE_BROWSER) {
+            PrivateBrowserScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(Routes.STATISTICS) {
+            StatisticsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(Routes.SETTINGS) {
+            SettingsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() },
+                onOpenPermissions = { navController.navigate(Routes.PERMISSIONS) }
+            )
+        }
+
+        composable(Routes.PERMISSIONS) {
+            PermissionsManagerScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
+    }
+}

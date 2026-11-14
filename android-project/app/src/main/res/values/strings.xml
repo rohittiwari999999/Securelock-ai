@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">SecureLock AI</string>
+    <string name="accessibility_service_label">SecureLock App Protection Monitor</string>
+    <string name="accessibility_service_description">Detects when a user-selected protected application enters the foreground so SecureLock AI can present the authentication screen. Never reads screen text, passwords, or keystrokes.</string>
+    <string name="notification_listener_label">SecureLock Notification Privacy</string>
+    <string name="monitor_channel_name">App Protection Service</string>
+    <string name="monitor_channel_desc">Optional persistent indicator while UsageStats app lock monitoring is enabled</string>
+    <string name="security_channel_name">Security Alerts</string>
+    <string name="security_channel_desc">Local alerts for failed unlock attempts</string>
+</resources>

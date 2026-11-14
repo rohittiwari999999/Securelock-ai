@@ -1,0 +1,6 @@
+{
+  "name": "SecureLock AI",
+  "description": "Native Kotlin and Jetpack Compose Android App Lock & Privacy Protector with an interactive UI preview and downloadable Android Studio project.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
