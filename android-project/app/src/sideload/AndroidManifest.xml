@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application>
+        <!--
+            Direct-sideload flavor omits BIND_ACCESSIBILITY_SERVICE and
+            BIND_NOTIFICATION_LISTENER_SERVICE so Google Play Protect Enhanced Fraud
+            Protection does not hard-block direct APK installation outside Play Store.
+            App Lock continues operating via UsageStatsManager (AppLockMonitorService) + Overlay.
+        -->
+        <service
+            android:name=".service.AppLockAccessibilityService"
+            tools:node="remove" />
+
+        <service
+            android:name=".service.LockNotificationListenerService"
+            tools:node="remove" />
+    </application>
+
+</manifest>

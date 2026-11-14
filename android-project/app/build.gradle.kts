@@ -50,6 +50,16 @@ android {
         }
     }
 
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("full") {
+            dimension = "distribution"
+        }
+        create("sideload") {
+            dimension = "distribution"
+        }
+    }
+
     val enableAbiSplits = project.findProperty("enableAbiSplits")?.toString()?.toBoolean() == true
     splits {
         abi {

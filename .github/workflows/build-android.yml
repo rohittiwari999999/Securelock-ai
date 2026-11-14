@@ -80,36 +80,29 @@ jobs:
             echo "Generated temporary PKCS12 signing keystore so all APKs & AAB are signed and installable."
           fi
 
-      - name: Run Unit Tests & Build Signed APK / AAB
+      - name: Run Unit Tests & Build Signed APKs / AAB
         working-directory: ${{ steps.android.outputs.dir }}
         run: |
-          gradle testDebugUnitTest assembleDebug bundleRelease --no-daemon --stacktrace
-          gradle assembleRelease -PenableAbiSplits=true --no-daemon --stacktrace
+          gradle testFullDebugUnitTest bundleFullRelease --no-daemon --stacktrace
+          gradle assembleSideloadRelease assembleFullRelease -PenableAbiSplits=true --no-daemon --stacktrace
 
-      - name: Upload Installable Universal Release APK
+      - name: Upload Sideload Installable APK (Play Protect Friendly)
         uses: actions/upload-artifact@v4
         with:
-          name: SecureLockAI-Installable-APK
-          path: ${{ steps.android.outputs.dir }}/app/build/outputs/apk/release/*universal*.apk
+          name: SecureLockAI-Sideload-Installable-APK
+          path: ${{ steps.android.outputs.dir }}/app/build/outputs/apk/sideload/release/*universal*.apk
           if-no-files-found: error
 
-      - name: Upload All Signed Release APKs (Universal + ABI Splits)
+      - name: Upload Full Release APK (All Services, For ADB / Play Protect Off)
         uses: actions/upload-artifact@v4
         with:
-          name: SecureLockAI-Release-APKs
-          path: ${{ steps.android.outputs.dir }}/app/build/outputs/apk/release/*.apk
+          name: SecureLockAI-Full-APK
+          path: ${{ steps.android.outputs.dir }}/app/build/outputs/apk/full/release/*universal*.apk
           if-no-files-found: error
 
-      - name: Upload Debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: SecureLockAI-Debug-APK
-          path: ${{ steps.android.outputs.dir }}/app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-
-      - name: Upload Play Store Bundle (AAB)
+      - name: Upload Play Store Bundle (AAB - Full Features)
         uses: actions/upload-artifact@v4
         with:
           name: SecureLockAI-PlayStore-AAB
-          path: ${{ steps.android.outputs.dir }}/app/build/outputs/bundle/release/*.aab
+          path: ${{ steps.android.outputs.dir }}/app/build/outputs/bundle/fullRelease/*.aab
           if-no-files-found: error
