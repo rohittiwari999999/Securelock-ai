@@ -2,9 +2,12 @@
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="securelock_keystore_prefs.xml" />
+        <exclude domain="sharedpref" path="securelock_vault_index.xml" />
         <exclude domain="file" path="intruders/" />
+        <exclude domain="file" path="vault/" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="securelock_keystore_prefs.xml" />
+        <exclude domain="sharedpref" path="securelock_vault_index.xml" />
     </device-transfer>
 </data-extraction-rules>

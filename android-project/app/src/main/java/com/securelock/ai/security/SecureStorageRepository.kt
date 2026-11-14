@@ -7,6 +7,7 @@ import com.securelock.ai.data.IntruderRecord
 import com.securelock.ai.data.LocalBackupPayload
 import com.securelock.ai.data.LocalSettingsState
 import com.securelock.ai.data.LocalStatistics
+import com.securelock.ai.data.LockMethod
 import com.securelock.ai.data.ProtectedNotificationRecord
 import com.securelock.ai.data.SecurityEvent
 import com.securelock.ai.data.SecurityEventType
@@ -23,9 +24,9 @@ import java.util.Locale
 import java.util.UUID
 
 /**
- * Offline-first repository persisting all configuration, hashed credentials,
- * intruder metadata, notification privacy logs, and local statistics encrypted
- * via Android Keystore AES-256-GCM.
+ * Offline-first repository persisting configuration, hashed credentials (PIN, pattern,
+ * alphanumeric password), encrypted intruder records, notification logs, and local statistics
+ * encrypted via Android Keystore AES-256-GCM.
  */
 class SecureStorageRepository(context: Context) {
 
@@ -53,15 +54,31 @@ class SecureStorageRepository(context: Context) {
 
     fun hasPinConfigured(): Boolean = !prefs.getString(KEY_PIN_HASH, null).isNullOrEmpty()
     fun hasPatternConfigured(): Boolean = !prefs.getString(KEY_PATTERN_HASH, null).isNullOrEmpty()
+    fun hasPasswordConfigured(): Boolean = !prefs.getString(KEY_PASSWORD_HASH, null).isNullOrEmpty()
     fun hasRecoveryCodeConfigured(): Boolean = !prefs.getString(KEY_RECOVERY_HASH, null).isNullOrEmpty()
 
-    fun setPin(pin: String) {
+    fun configuredPinLength(): Int = prefs.getInt(KEY_PIN_LENGTH, 4)
+
+    fun setPin(pin: String, method: LockMethod = when (pin.length) {
+        4 -> LockMethod.PIN_4
+        6 -> LockMethod.PIN_6
+        else -> LockMethod.PIN_CUSTOM
+    }) {
         val chars = pin.toCharArray()
         val encryptedHash = KeystoreCryptoManager.encrypt(KeystoreCryptoManager.hashSecret(chars))
         chars.fill('\u0000')
-        prefs.edit().putString(KEY_PIN_HASH, encryptedHash).apply()
-        updateSettings { it.copy(isSetupComplete = true) }
-        logEvent(SecurityEventType.PIN_CHANGED, "PIN Updated", "Master security PIN updated locally")
+        prefs.edit()
+            .putString(KEY_PIN_HASH, encryptedHash)
+            .putInt(KEY_PIN_LENGTH, pin.length)
+            .apply()
+        updateSettings {
+            it.copy(
+                isSetupComplete = true,
+                customPinLength = pin.length,
+                preferredLockMethod = method
+            )
+        }
+        logEvent(SecurityEventType.PIN_CHANGED, "PIN Updated", "${pin.length}-digit PIN updated locally")
     }
 
     fun verifyPin(pin: String): Boolean {
@@ -92,6 +109,38 @@ class SecureStorageRepository(context: Context) {
         return ok
     }
 
+    fun setPassword(password: String) {
+        val chars = password.toCharArray()
+        val encryptedHash = KeystoreCryptoManager.encrypt(KeystoreCryptoManager.hashSecret(chars))
+        chars.fill('\u0000')
+        prefs.edit().putString(KEY_PASSWORD_HASH, encryptedHash).apply()
+        updateSettings { it.copy(isSetupComplete = true) }
+        logEvent(SecurityEventType.PASSWORD_CHANGED, "Password Updated", "Alphanumeric password updated locally")
+    }
+
+    fun verifyPassword(password: String): Boolean {
+        val encrypted = prefs.getString(KEY_PASSWORD_HASH, null) ?: return false
+        val storedHash = KeystoreCryptoManager.decrypt(encrypted) ?: return false
+        val chars = password.toCharArray()
+        val ok = KeystoreCryptoManager.verifySecret(chars, storedHash)
+        chars.fill('\u0000')
+        return ok
+    }
+
+    fun resolveMethodForPackage(packageName: String?): LockMethod {
+        val current = _settings.value
+        val candidate = if (packageName != null) {
+            current.perAppLockMethods[packageName] ?: current.preferredLockMethod
+        } else {
+            current.preferredLockMethod
+        }
+        return when (candidate) {
+            LockMethod.PATTERN -> if (hasPatternConfigured()) LockMethod.PATTERN else LockMethod.PIN_4
+            LockMethod.PASSWORD -> if (hasPasswordConfigured()) LockMethod.PASSWORD else LockMethod.PIN_4
+            else -> candidate
+        }
+    }
+
     fun generateAndStoreRecoveryCode(): String {
         val code = KeystoreCryptoManager.generateRecoveryCode()
         val chars = code.replace("-", "").uppercase(Locale.US).toCharArray()
@@ -108,7 +157,7 @@ class SecureStorageRepository(context: Context) {
         val ok = KeystoreCryptoManager.verifySecret(normalized, storedHash)
         normalized.fill('\u0000')
         if (ok) {
-            logEvent(SecurityEventType.RECOVERY_USED, "Emergency Recovery Used", "PIN reset authorized via recovery code")
+            logEvent(SecurityEventType.RECOVERY_USED, "Emergency Recovery Used", "Credentials reset via recovery code")
         }
         return ok
     }
@@ -123,7 +172,6 @@ class SecureStorageRepository(context: Context) {
     fun recordAuthAttempt(success: Boolean, methodLabel: String, targetPackage: String = appContext.packageName) {
         val now = System.currentTimeMillis()
         val dateKey = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(now))
-        val dayLabel = SimpleDateFormat("EEE", Locale.US).format(Date(now))
 
         val current = _statistics.value
         val baseHistory = ensureSevenDayWindow(current.dailyHistory)
@@ -157,7 +205,7 @@ class SecureStorageRepository(context: Context) {
             failedAttempts = current.failedAttempts + if (success) 0 else 1,
             lastActivityMillis = now,
             dailyHistory = updatedHistory,
-            recentEvents = (listOf(newEvent) + current.recentEvents).take(50)
+            recentEvents = (listOf(newEvent) + current.recentEvents).take(60)
         )
         persistStatistics(updatedStats)
     }
@@ -175,17 +223,23 @@ class SecureStorageRepository(context: Context) {
         persistStatistics(
             current.copy(
                 lastActivityMillis = now,
-                recentEvents = (listOf(newEvent) + current.recentEvents).take(50)
+                recentEvents = (listOf(newEvent) + current.recentEvents).take(60)
             )
         )
     }
 
-    fun addIntruderRecord(failedAttemptCount: Int, targetPackage: String, imagePath: String?): IntruderRecord {
+    fun addIntruderRecord(
+        failedAttemptCount: Int,
+        targetPackage: String,
+        methodAttempted: String = "PIN",
+        imagePath: String? = null
+    ): IntruderRecord {
         val record = IntruderRecord(
             id = UUID.randomUUID().toString(),
             timestampMillis = System.currentTimeMillis(),
             failedAttemptCount = failedAttemptCount,
             targetPackage = targetPackage,
+            methodAttempted = methodAttempted,
             imagePath = imagePath
         )
         val updated = listOf(record) + _intruders.value
@@ -195,10 +249,30 @@ class SecureStorageRepository(context: Context) {
             logEvent(
                 SecurityEventType.INTRUDER_CAPTURED,
                 "Foreground Intruder Photo Saved",
-                "Saved to private storage after $failedAttemptCount failed attempts"
+                "Encrypted in private storage after $failedAttemptCount failed attempts"
             )
         }
         return record
+    }
+
+    fun saveEncryptedIntruderImage(plainJpegBytes: ByteArray): String {
+        val encrypted = KeystoreCryptoManager.encryptBytes(plainJpegBytes)
+        plainJpegBytes.fill(0)
+        val file = File(getIntruderStorageDir(), "intruder_${UUID.randomUUID()}.slv")
+        file.writeBytes(encrypted)
+        return file.absolutePath
+    }
+
+    fun decryptIntruderImage(imagePath: String?): ByteArray? {
+        if (imagePath.isNullOrBlank()) return null
+        val file = File(imagePath)
+        if (!file.exists()) return null
+        val raw = file.readBytes()
+        return if (imagePath.endsWith(".slv")) {
+            KeystoreCryptoManager.decryptBytes(raw)
+        } else {
+            raw
+        }
     }
 
     fun attachIntruderPhoto(recordId: String, imagePath: String) {
@@ -210,7 +284,7 @@ class SecureStorageRepository(context: Context) {
         logEvent(
             SecurityEventType.INTRUDER_CAPTURED,
             "Foreground Intruder Photo Saved",
-            "User-authorized foreground snapshot stored privately"
+            "User-authorized foreground snapshot encrypted privately"
         )
     }
 
@@ -327,7 +401,9 @@ class SecureStorageRepository(context: Context) {
     companion object {
         private const val PREFS_FILE = "securelock_keystore_prefs"
         private const val KEY_PIN_HASH = "pin_hash"
+        private const val KEY_PIN_LENGTH = "pin_length"
         private const val KEY_PATTERN_HASH = "pattern_hash"
+        private const val KEY_PASSWORD_HASH = "password_hash"
         private const val KEY_RECOVERY_HASH = "recovery_hash"
         private const val KEY_SETTINGS = "settings_json"
         private const val KEY_STATS = "stats_json"

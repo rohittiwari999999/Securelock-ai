@@ -1,7 +1,6 @@
 package com.securelock.ai.ui.screens
 
 import android.Manifest
-import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -32,6 +31,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
@@ -44,6 +44,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -61,6 +62,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -75,11 +78,7 @@ import com.securelock.ai.security.SecureStorageRepository
 import com.securelock.ai.ui.components.PatternLockPad
 import com.securelock.ai.ui.components.PinKeypad
 import com.securelock.ai.ui.theme.CrimsonAlert
-import com.securelock.ai.ui.theme.CrispWhite
-import com.securelock.ai.ui.theme.DeepNavy
-import com.securelock.ai.ui.theme.ElectricBlue
-import com.securelock.ai.ui.theme.MidnightBlue
-import com.securelock.ai.ui.theme.SkyAccent
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.UUID
 
@@ -88,23 +87,30 @@ fun UnlockScreen(
     activity: FragmentActivity,
     repository: SecureStorageRepository,
     targetPackageLabel: String,
+    targetPackageName: String? = null,
     isSetupFlow: Boolean,
     onUnlocked: () -> Unit
 ) {
     val context = LocalContext.current
     val settings by repository.settings.collectAsState()
+    val configuredLength = remember(settings.customPinLength) {
+        repository.configuredPinLength().coerceIn(4, 12)
+    }
 
-    var activeMethod by remember(settings.preferredLockMethod) {
-        mutableStateOf(
-            if (isSetupFlow || !repository.hasPatternConfigured()) LockMethod.PIN
-            else settings.preferredLockMethod
-        )
+    val resolvedDefaultMethod = remember(targetPackageName, settings.preferredLockMethod, settings.perAppLockMethods) {
+        if (isSetupFlow) LockMethod.PIN_4
+        else repository.resolveMethodForPackage(targetPackageName)
+    }
+
+    var activeMethod by remember(resolvedDefaultMethod) {
+        mutableStateOf(resolvedDefaultMethod)
     }
     var enteredPin by remember { mutableStateOf("") }
+    var enteredPassword by remember { mutableStateOf("") }
     var setupFirstPin by remember { mutableStateOf<String?>(null) }
     var statusMessage by remember {
         mutableStateOf(
-            if (isSetupFlow) "Create a 4–6 digit master PIN (stored hashed with Android Keystore)"
+            if (isSetupFlow) "Create a 4–12 digit master PIN (stored hashed with Android Keystore)"
             else "Verify your identity to access $targetPackageLabel"
         )
     }
@@ -122,26 +128,38 @@ fun UnlockScreen(
         settings.biometricEnabled &&
         biometricAvailability is BiometricAvailability.Available
 
+    val handleFailedAttempt = { methodLabel: String ->
+        consecutiveFailures += 1
+        repository.recordAuthAttempt(false, methodLabel, targetPackageLabel)
+        isError = true
+        statusMessage = "$methodLabel not recognized ($consecutiveFailures failed attempt(s))"
+        val threshold = settings.intruderAttemptThreshold.coerceIn(1, 10)
+        if (consecutiveFailures >= threshold) {
+            val rec = repository.addIntruderRecord(
+                failedAttemptCount = consecutiveFailures,
+                targetPackage = targetPackageLabel,
+                methodAttempted = methodLabel,
+                imagePath = null
+            )
+            lastIntruderId = rec.id
+            if (settings.foregroundIntruderPromptEnabled) {
+                showForegroundCapturePrompt = true
+            }
+        }
+    }
+
     val triggerBiometric = {
         BiometricAuthManager.authenticate(
             activity = activity,
             title = "Unlock $targetPackageLabel",
             subtitle = "Use your enrolled fingerprint or biometric credential",
             onSuccess = {
-                repository.recordAuthAttempt(success = true, methodLabel = "Biometric", targetPackage = targetPackageLabel)
+                repository.recordAuthAttempt(true, "Biometric", targetPackageLabel)
                 consecutiveFailures = 0
                 onUnlocked()
             },
             onFailedAttempt = {
-                consecutiveFailures += 1
-                repository.recordAuthAttempt(success = false, methodLabel = "Biometric", targetPackage = targetPackageLabel)
-                isError = true
-                statusMessage = "Biometric not recognized ($consecutiveFailures failed attempt(s))"
-                if (consecutiveFailures >= 3 && settings.foregroundIntruderPromptEnabled) {
-                    val rec = repository.addIntruderRecord(consecutiveFailures, targetPackageLabel, null)
-                    lastIntruderId = rec.id
-                    showForegroundCapturePrompt = true
-                }
+                handleFailedAttempt("Biometric")
             },
             onError = { msg ->
                 isError = true
@@ -156,10 +174,16 @@ fun UnlockScreen(
         }
     }
 
+    val bg = MaterialTheme.colorScheme.background
+    val fg = MaterialTheme.colorScheme.onBackground
+    val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
+    val primary = MaterialTheme.colorScheme.primary
+    val accent = MaterialTheme.colorScheme.secondary
+
     val pulseTransition = rememberInfiniteTransition(label = "fp_pulse")
     val pulseScale by pulseTransition.animateFloat(
         initialValue = 1f,
-        targetValue = 1.07f,
+        targetValue = 1.08f,
         animationSpec = infiniteRepeatable(
             animation = tween(1400, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
@@ -167,10 +191,29 @@ fun UnlockScreen(
         label = "fp_scale"
     )
 
+    val availableMethods = remember(
+        isSetupFlow,
+        settings.preferredLockMethod,
+        repository.hasPatternConfigured(),
+        repository.hasPasswordConfigured()
+    ) {
+        if (isSetupFlow) emptyList()
+        else buildList {
+            val pinMethod = when (configuredLength) {
+                6 -> LockMethod.PIN_6
+                4 -> LockMethod.PIN_4
+                else -> LockMethod.PIN_CUSTOM
+            }
+            add(pinMethod to "PIN")
+            if (repository.hasPatternConfigured()) add(LockMethod.PATTERN to "Pattern")
+            if (repository.hasPasswordConfigured()) add(LockMethod.PASSWORD to "Password")
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(DeepNavy)
+            .background(bg)
             .safeDrawingPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp, vertical = 20.dp),
@@ -180,7 +223,7 @@ fun UnlockScreen(
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Surface(
                 shape = CircleShape,
-                color = MidnightBlue,
+                color = surfaceVariant,
                 modifier = Modifier
                     .size(96.dp)
                     .scale(if (canUseBiometric) pulseScale else 1f)
@@ -190,7 +233,7 @@ fun UnlockScreen(
                     Icon(
                         imageVector = if (canUseBiometric) Icons.Default.Fingerprint else Icons.Default.Lock,
                         contentDescription = "Fingerprint Unlock",
-                        tint = SkyAccent,
+                        tint = accent,
                         modifier = Modifier.size(56.dp)
                     )
                 }
@@ -201,7 +244,7 @@ fun UnlockScreen(
             Text(
                 text = if (isSetupFlow) "Set Up SecureLock AI" else "SecureLock AI",
                 style = MaterialTheme.typography.headlineMedium,
-                color = CrispWhite
+                color = fg
             )
 
             Spacer(modifier = Modifier.height(6.dp))
@@ -209,34 +252,36 @@ fun UnlockScreen(
             Text(
                 text = statusMessage,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (isError) CrimsonAlert else CrispWhite.copy(alpha = 0.78f),
+                color = if (isError) CrimsonAlert else fg.copy(alpha = 0.78f),
                 textAlign = TextAlign.Center
             )
 
-            if (!isSetupFlow && repository.hasPatternConfigured()) {
+            if (availableMethods.size > 1) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(14.dp))
-                        .background(MidnightBlue)
+                        .background(surfaceVariant)
                         .padding(4.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    listOf(LockMethod.PIN to "PIN", LockMethod.PATTERN to "Pattern").forEach { (method, label) ->
-                        val selected = activeMethod == method
+                    availableMethods.forEach { (method, label) ->
+                        val isPinActive = activeMethod != LockMethod.PATTERN && activeMethod != LockMethod.PASSWORD &&
+                            method != LockMethod.PATTERN && method != LockMethod.PASSWORD
+                        val selected = activeMethod == method || isPinActive
                         Surface(
                             onClick = {
                                 activeMethod = method
                                 isError = false
                             },
                             shape = RoundedCornerShape(10.dp),
-                            color = if (selected) ElectricBlue else MidnightBlue
+                            color = if (selected) primary else surfaceVariant
                         ) {
                             Text(
                                 text = label,
-                                color = CrispWhite,
+                                color = if (selected) MaterialTheme.colorScheme.onPrimary else fg,
                                 style = MaterialTheme.typography.labelMedium,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
                             )
                         }
                     }
@@ -246,96 +291,127 @@ fun UnlockScreen(
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        if (activeMethod == LockMethod.PIN || isSetupFlow) {
-            PinKeypad(
-                enteredLength = enteredPin.length,
-                maxLength = 6,
-                onDigit = { digit ->
-                    if (enteredPin.length < 6) {
-                        enteredPin += digit
-                        isError = false
-                        if (!isSetupFlow && enteredPin.length >= 4 && repository.verifyPin(enteredPin)) {
-                            repository.recordAuthAttempt(true, "PIN", targetPackageLabel)
-                            enteredPin = ""
+        when {
+            activeMethod == LockMethod.PATTERN && !isSetupFlow -> {
+                PatternLockPad(
+                    onPatternComplete = { nodes ->
+                        if (nodes.size < 4) {
+                            isError = true
+                            statusMessage = "Connect at least 4 nodes"
+                        } else if (repository.verifyPattern(nodes)) {
+                            repository.recordAuthAttempt(true, "Pattern", targetPackageLabel)
                             consecutiveFailures = 0
                             onUnlocked()
-                        } else if (!isSetupFlow && enteredPin.length == 6) {
-                            consecutiveFailures += 1
-                            repository.recordAuthAttempt(false, "PIN", targetPackageLabel)
-                            enteredPin = ""
-                            isError = true
-                            statusMessage = "Incorrect PIN ($consecutiveFailures failed attempt(s))"
-                            if (consecutiveFailures >= 3 && settings.foregroundIntruderPromptEnabled) {
-                                val rec = repository.addIntruderRecord(consecutiveFailures, targetPackageLabel, null)
-                                lastIntruderId = rec.id
-                                showForegroundCapturePrompt = true
-                            }
-                        }
-                    }
-                },
-                onBackspace = {
-                    if (enteredPin.isNotEmpty()) {
-                        enteredPin = enteredPin.dropLast(1)
-                    }
-                },
-                onBiometricClick = if (canUseBiometric) triggerBiometric else null,
-                biometricIcon = if (canUseBiometric) Icons.Default.Fingerprint else null
-            )
-
-            if (isSetupFlow) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Button(
-                    onClick = {
-                        if (enteredPin.length < 4) {
-                            isError = true
-                            statusMessage = "PIN must be 4 to 6 digits"
-                        } else if (setupFirstPin == null) {
-                            setupFirstPin = enteredPin
-                            enteredPin = ""
-                            isError = false
-                            statusMessage = "Re-enter your PIN to confirm"
-                        } else if (setupFirstPin == enteredPin) {
-                            repository.setPin(enteredPin)
-                            val recovery = repository.generateAndStoreRecoveryCode()
-                            enteredPin = ""
-                            showGeneratedRecoveryDialog = recovery
                         } else {
-                            setupFirstPin = null
-                            enteredPin = ""
-                            isError = true
-                            statusMessage = "PINs did not match. Enter a new PIN."
+                            handleFailedAttempt("Pattern")
                         }
-                    },
-                    enabled = enteredPin.length >= 4,
-                    colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
-                    modifier = Modifier.fillMaxWidth()
+                    }
+                )
+            }
+
+            activeMethod == LockMethod.PASSWORD && !isSetupFlow -> {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text(if (setupFirstPin == null) "Continue" else "Confirm & Save PIN")
+                    OutlinedTextField(
+                        value = enteredPassword,
+                        onValueChange = { enteredPassword = it },
+                        label = { Text("Alphanumeric Password") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Button(
+                        onClick = {
+                            if (repository.verifyPassword(enteredPassword)) {
+                                repository.recordAuthAttempt(true, "Password", targetPackageLabel)
+                                enteredPassword = ""
+                                consecutiveFailures = 0
+                                onUnlocked()
+                            } else {
+                                enteredPassword = ""
+                                handleFailedAttempt("Password")
+                            }
+                        },
+                        enabled = enteredPassword.isNotBlank(),
+                        colors = ButtonDefaults.buttonColors(containerColor = primary),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Unlock with Password")
+                    }
                 }
             }
-        } else {
-            PatternLockPad(
-                onPatternComplete = { nodes ->
-                    if (nodes.size < 4) {
-                        isError = true
-                        statusMessage = "Connect at least 4 nodes"
-                    } else if (repository.verifyPattern(nodes)) {
-                        repository.recordAuthAttempt(true, "Pattern", targetPackageLabel)
-                        consecutiveFailures = 0
-                        onUnlocked()
-                    } else {
-                        consecutiveFailures += 1
-                        repository.recordAuthAttempt(false, "Pattern", targetPackageLabel)
-                        isError = true
-                        statusMessage = "Incorrect pattern ($consecutiveFailures failed attempt(s))"
-                        if (consecutiveFailures >= 3 && settings.foregroundIntruderPromptEnabled) {
-                            val rec = repository.addIntruderRecord(consecutiveFailures, targetPackageLabel, null)
-                            lastIntruderId = rec.id
-                            showForegroundCapturePrompt = true
+
+            else -> {
+                val maxDigits = if (isSetupFlow) 12 else configuredLength
+                PinKeypad(
+                    enteredLength = enteredPin.length,
+                    maxLength = maxDigits,
+                    onDigit = { digit ->
+                        if (enteredPin.length < maxDigits) {
+                            enteredPin += digit
+                            isError = false
+                            if (!isSetupFlow && enteredPin.length >= 4 && repository.verifyPin(enteredPin)) {
+                                repository.recordAuthAttempt(true, "PIN", targetPackageLabel)
+                                enteredPin = ""
+                                consecutiveFailures = 0
+                                onUnlocked()
+                            } else if (!isSetupFlow && enteredPin.length == maxDigits) {
+                                enteredPin = ""
+                                handleFailedAttempt("PIN")
+                            }
                         }
+                    },
+                    onBackspace = {
+                        if (enteredPin.isNotEmpty()) {
+                            enteredPin = enteredPin.dropLast(1)
+                        }
+                    },
+                    onBiometricClick = if (canUseBiometric) triggerBiometric else null,
+                    biometricIcon = if (canUseBiometric) Icons.Default.Fingerprint else null
+                )
+
+                if (isSetupFlow) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            if (enteredPin.length < 4) {
+                                isError = true
+                                statusMessage = "PIN must be 4 to 12 digits"
+                            } else if (setupFirstPin == null) {
+                                setupFirstPin = enteredPin
+                                enteredPin = ""
+                                isError = false
+                                statusMessage = "Re-enter your ${setupFirstPin!!.length}-digit PIN to confirm"
+                            } else if (setupFirstPin == enteredPin) {
+                                repository.setPin(enteredPin)
+                                val recovery = repository.generateAndStoreRecoveryCode()
+                                enteredPin = ""
+                                showGeneratedRecoveryDialog = recovery
+                            } else {
+                                setupFirstPin = null
+                                enteredPin = ""
+                                isError = true
+                                statusMessage = "PINs did not match. Enter a new PIN."
+                            }
+                        },
+                        enabled = enteredPin.length >= 4,
+                        colors = ButtonDefaults.buttonColors(containerColor = primary),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(if (setupFirstPin == null) "Continue" else "Confirm & Save PIN")
                     }
                 }
-            )
+            }
         }
 
         Column(
@@ -344,7 +420,7 @@ fun UnlockScreen(
         ) {
             if (!isSetupFlow && repository.hasRecoveryCodeConfigured()) {
                 TextButton(onClick = { showRecoveryDialog = true }) {
-                    Text("Forgot PIN? Use Emergency Recovery", color = SkyAccent)
+                    Text("Forgot PIN? Use Emergency Recovery", color = accent)
                 }
             }
             if (canUseBiometric) {
@@ -355,13 +431,10 @@ fun UnlockScreen(
                     Icon(
                         imageVector = Icons.Default.Fingerprint,
                         contentDescription = null,
-                        tint = SkyAccent,
+                        tint = accent,
                         modifier = Modifier.size(18.dp)
                     )
-                    Text(
-                        text = "  Prompt Biometric Scanner",
-                        color = CrispWhite
-                    )
+                    Text("  Prompt Biometric Scanner", color = fg)
                 }
             }
         }
@@ -376,13 +449,13 @@ fun UnlockScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Store this one-time recovery key safely offline. SecureLock AI cannot recover your PIN without it.")
                     Surface(
-                        color = DeepNavy,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
                             text = code,
-                            color = SkyAccent,
+                            color = accent,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.padding(14.dp)
@@ -408,7 +481,7 @@ fun UnlockScreen(
 
         AlertDialog(
             onDismissRequest = { showRecoveryDialog = false },
-            title = { Text("Emergency PIN Recovery") },
+            title = { Text("Emergency Credential Recovery") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(
@@ -419,8 +492,8 @@ fun UnlockScreen(
                     )
                     OutlinedTextField(
                         value = newPinInput,
-                        onValueChange = { if (it.length <= 6 && it.all(Char::isDigit)) newPinInput = it },
-                        label = { Text("New 4-6 Digit PIN") },
+                        onValueChange = { if (it.length <= 12 && it.all(Char::isDigit)) newPinInput = it },
+                        label = { Text("New 4–12 Digit PIN") },
                         singleLine = true
                     )
                     recoveryError?.let {
@@ -431,7 +504,7 @@ fun UnlockScreen(
             confirmButton = {
                 Button(onClick = {
                     if (newPinInput.length < 4) {
-                        recoveryError = "New PIN must be 4-6 digits"
+                        recoveryError = "New PIN must be 4–12 digits"
                     } else if (repository.verifyRecoveryCode(recoveryInput)) {
                         repository.setPin(newPinInput)
                         showRecoveryDialog = false
@@ -444,9 +517,7 @@ fun UnlockScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showRecoveryDialog = false }) {
-                    Text("Cancel")
-                }
+                TextButton(onClick = { showRecoveryDialog = false }) { Text("Cancel") }
             }
         )
     }
@@ -487,7 +558,7 @@ private fun ForegroundIntruderCaptureDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    "Multiple failed attempts were logged. Android requires an explicit, visible foreground capture—you may take a verification photo now or skip."
+                    "Multiple failed attempts reached your configured threshold. Android requires an explicit foreground capture—you may save an encrypted verification photo now or skip."
                 )
                 if (cameraGranted) {
                     AndroidView(
@@ -527,31 +598,35 @@ private fun ForegroundIntruderCaptureDialog(
         confirmButton = {
             if (cameraGranted) {
                 Button(onClick = {
-                    val file = File(repository.getIntruderStorageDir(), "intruder_${UUID.randomUUID()}.jpg")
-                    val outputOptions = ImageCapture.OutputFileOptions.Builder(file).build()
+                    val tempFile = File(context.cacheDir, "tmp_cap_${UUID.randomUUID()}.jpg")
+                    val outputOptions = ImageCapture.OutputFileOptions.Builder(tempFile).build()
                     imageCapture.takePicture(
                         outputOptions,
                         ContextCompat.getMainExecutor(context),
                         object : ImageCapture.OnImageSavedCallback {
                             override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
-                                repository.attachIntruderPhoto(intruderRecordId, file.absolutePath)
+                                val bytes = runCatching { tempFile.readBytes() }.getOrNull()
+                                runCatching { tempFile.delete() }
+                                if (bytes != null) {
+                                    val encryptedPath = repository.saveEncryptedIntruderImage(bytes)
+                                    repository.attachIntruderPhoto(intruderRecordId, encryptedPath)
+                                }
                                 onDismiss()
                             }
 
                             override fun onError(exception: ImageCaptureException) {
+                                runCatching { tempFile.delete() }
                                 onDismiss()
                             }
                         }
                     )
                 }) {
-                    Text("Capture Snapshot")
+                    Text("Capture & Encrypt")
                 }
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Skip")
-            }
+            TextButton(onClick = onDismiss) { Text("Skip") }
         }
     )
 }

@@ -19,14 +19,20 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val repository = (application as SecureLockApplication).storageRepository
+        val app = application as SecureLockApplication
 
         setContent {
-            val settings by repository.settings.collectAsState()
-            SecureLockTheme(themeMode = settings.themeMode) {
+            val settings by app.storageRepository.settings.collectAsState()
+            SecureLockTheme(
+                themeId = settings.themeId,
+                customAccentHex = settings.customAccentHex,
+                forceLightMode = settings.forceLightMode,
+                cardStyleMode = settings.cardStyleMode
+            ) {
                 SecureLockNavHost(
                     activity = this,
-                    repository = repository
+                    repository = app.storageRepository,
+                    vaultRepository = app.vaultRepository
                 )
             }
         }

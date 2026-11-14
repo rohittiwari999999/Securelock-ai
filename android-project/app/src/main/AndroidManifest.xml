@@ -49,14 +49,66 @@
             android:exported="true"
             android:launchMode="singleTop"
             android:theme="@style/Theme.SecureLockAI"
-            android:windowSoftInputMode="adjustResize">
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- Switchable launcher aliases for Custom App Icons (enabled/disabled via PackageManager) -->
+        <activity-alias
+            android:name=".MainActivityDefault"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
 
-        <!-- Protected app gate & customizable App Unavailable screen -->
+        <activity-alias
+            android:name=".MainActivityVault"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_icon_vault"
+            android:label="@string/icon_label_vault"
+            android:roundIcon="@drawable/ic_icon_vault"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityMinimal"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_icon_minimal"
+            android:label="@string/icon_label_minimal"
+            android:roundIcon="@drawable/ic_icon_minimal"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityUtility"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_icon_utility"
+            android:label="@string/icon_label_utility"
+            android:roundIcon="@drawable/ic_icon_utility"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Protected app gate & customizable decoy screen -->
         <activity
             android:name=".LockOverlayActivity"
             android:excludeFromRecents="true"

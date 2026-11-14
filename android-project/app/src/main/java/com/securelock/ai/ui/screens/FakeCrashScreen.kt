@@ -15,9 +15,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PauseCircle
 import androidx.compose.material.icons.filled.Shield
@@ -48,13 +53,13 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.securelock.ai.data.DecoyMode
 import com.securelock.ai.data.ProtectionScreenConfig
 import com.securelock.ai.security.SecureStorageRepository
 import com.securelock.ai.ui.components.SecureTopBar
 import com.securelock.ai.ui.components.WhiteSecurityCard
 import com.securelock.ai.ui.theme.CrispWhite
 import com.securelock.ai.ui.theme.DeepNavy
-import com.securelock.ai.ui.theme.ElectricBlue
 import com.securelock.ai.ui.theme.SlateText
 
 @Composable
@@ -80,11 +85,11 @@ fun FakeCrashConfigScreen(
     }
 
     Scaffold(
-        containerColor = DeepNavy,
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             SecureTopBar(
-                title = "App Protection Screen",
-                subtitle = "Neutral App Unavailable cover",
+                title = "Fake Crash / Decoy Screen",
+                subtitle = "Simulated screens inside SecureLock flow",
                 onBack = onBack
             )
         }
@@ -106,14 +111,14 @@ fun FakeCrashConfigScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Enable Protection Cover",
+                                    text = "Enable Simulated Decoy Cover",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Shows a neutral App Unavailable screen before authentication. Never mimics Android OS crash dialogs.",
+                                    text = "These are simulated privacy screens triggered only inside SecureLock's protection flow. Authentication is required to exit, and they never impersonate genuine Android system security dialogs.",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = SlateText
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             Switch(
@@ -132,33 +137,60 @@ fun FakeCrashConfigScreen(
             item {
                 WhiteSecurityCard {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("Customize Screen Copy", style = MaterialTheme.typography.titleMedium)
+                        Text("Simulated Decoy Template", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(DecoyMode.entries) { mode ->
+                                FilterChip(
+                                    selected = config.decoyMode == mode,
+                                    onClick = {
+                                        repository.updateSettings {
+                                            it.copy(
+                                                protectionScreenConfig = config.copy(
+                                                    decoyMode = mode,
+                                                    title = mode.defaultTitle,
+                                                    message = mode.defaultMessage
+                                                )
+                                            )
+                                        }
+                                    },
+                                    label = { Text(mode.label) }
+                                )
+                            }
+                        }
 
-                        OutlinedTextField(
-                            value = config.title,
-                            onValueChange = { value ->
-                                repository.updateSettings {
-                                    it.copy(protectionScreenConfig = config.copy(title = value))
-                                }
-                            },
-                            label = { Text("Screen Heading") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        if (config.decoyMode != DecoyMode.BLANK_SCREEN) {
+                            OutlinedTextField(
+                                value = config.title,
+                                onValueChange = { value ->
+                                    repository.updateSettings {
+                                        it.copy(protectionScreenConfig = config.copy(title = value))
+                                    }
+                                },
+                                label = { Text("Simulated Heading") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
 
-                        OutlinedTextField(
-                            value = config.message,
-                            onValueChange = { value ->
-                                repository.updateSettings {
-                                    it.copy(protectionScreenConfig = config.copy(message = value))
-                                }
-                            },
-                            label = { Text("Neutral Protection Message") },
-                            minLines = 2,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                            OutlinedTextField(
+                                value = config.message,
+                                onValueChange = { value ->
+                                    repository.updateSettings {
+                                        it.copy(protectionScreenConfig = config.copy(message = value))
+                                    }
+                                },
+                                label = { Text("Simulated Message") },
+                                minLines = 2,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else {
+                            Text(
+                                text = "Blank Screen shows a solid screen. Tap the subtle corner control or bottom action to authenticate and exit.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
 
-                        Text("Cover Icon", style = MaterialTheme.typography.labelMedium, color = SlateText)
+                        Text("Cover Icon", style = MaterialTheme.typography.labelMedium)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf(
                                 "shield" to "Shield",
@@ -178,9 +210,9 @@ fun FakeCrashConfigScreen(
                             }
                         }
 
-                        Text("Background Color", style = MaterialTheme.typography.labelMedium, color = SlateText)
+                        Text("Backdrop Color", style = MaterialTheme.typography.labelMedium)
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            listOf(0xFF0A1628L, 0xFF1E293BL, 0xFF0F172AL, 0xFF112240L).forEach { hex ->
+                            listOf(0xFF0A1628L, 0xFF000000L, 0xFF1E293BL, 0xFF112240L).forEach { hex ->
                                 Box(
                                     modifier = Modifier
                                         .size(36.dp)
@@ -197,10 +229,10 @@ fun FakeCrashConfigScreen(
 
                         Button(
                             onClick = { showPreviewGate = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Preview App Protection Screen")
+                            Text("Preview Simulated Decoy Screen")
                         }
                     }
                 }
@@ -215,11 +247,37 @@ fun AppProtectionGateScreen(
     onProceedToUnlock: () -> Unit,
     onDismissHome: () -> Unit
 ) {
-    val icon: ImageVector = when (config.iconKey) {
-        "lock" -> Icons.Default.Lock
-        "hidden" -> Icons.Default.VisibilityOff
-        "pause" -> Icons.Default.PauseCircle
-        else -> Icons.Default.Shield
+    if (config.decoyMode == DecoyMode.BLANK_SCREEN) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(config.backgroundHex))
+                .safeDrawingPadding()
+                .padding(24.dp)
+        ) {
+            TextButton(
+                onClick = onProceedToUnlock,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            ) {
+                Text(
+                    text = "Authenticate to Exit Decoy",
+                    color = CrispWhite.copy(alpha = 0.35f)
+                )
+            }
+        }
+        return
+    }
+
+    val icon: ImageVector = when (config.decoyMode) {
+        DecoyMode.APP_STOPPED_SIMULATED -> Icons.Default.ErrorOutline
+        DecoyMode.LOADING_ERROR -> Icons.Default.HourglassEmpty
+        DecoyMode.NETWORK_ERROR -> Icons.Default.CloudOff
+        else -> when (config.iconKey) {
+            "lock" -> Icons.Default.Lock
+            "hidden" -> Icons.Default.VisibilityOff
+            "pause" -> Icons.Default.PauseCircle
+            else -> Icons.Default.Shield
+        }
     }
 
     Box(
@@ -256,19 +314,23 @@ fun AppProtectionGateScreen(
                 }
 
                 Text(
-                    text = config.title.ifBlank { "App Unavailable" },
+                    text = config.title.ifBlank { config.decoyMode.defaultTitle },
                     style = MaterialTheme.typography.headlineMedium,
                     color = DeepNavy,
                     textAlign = TextAlign.Center
                 )
 
                 Text(
-                    text = config.message.ifBlank {
-                        "This application is protected by SecureLock AI. Authenticate to continue."
-                    },
+                    text = config.message.ifBlank { config.decoyMode.defaultMessage },
                     style = MaterialTheme.typography.bodyMedium,
                     color = SlateText,
                     textAlign = TextAlign.Center
+                )
+
+                Text(
+                    text = "Simulated SecureLock Decoy",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color(config.accentHex)
                 )
 
                 Spacer(modifier = Modifier.height(6.dp))

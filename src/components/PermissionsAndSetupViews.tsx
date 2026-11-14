@@ -122,9 +122,9 @@ export function SetupAndVerificationView() {
     },
     {
       num: '04',
-      title: 'Build Optimized Release APK',
+      title: 'Build APK & AAB (Local or GitHub)',
       detail:
-        'Run ./gradlew assembleRelease. R8 code shrinking, resource shrinking, log removal in proguard-rules.pro, and ABI splits minimize final APK footprint.',
+        'Run ./gradlew assembleRelease bundleRelease locally, or push the extracted folder (including .github/workflows/build-android.yml) to GitHub to download compiled APKs & AAB from Actions Artifacts.',
     },
   ];
 

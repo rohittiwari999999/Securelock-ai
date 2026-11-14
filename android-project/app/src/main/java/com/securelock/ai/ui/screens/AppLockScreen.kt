@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -41,15 +42,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.securelock.ai.data.InstalledAppItem
+import com.securelock.ai.data.LockMethod
 import com.securelock.ai.security.PermissionHelper
 import com.securelock.ai.security.SecureStorageRepository
 import com.securelock.ai.service.AppLockMonitorService
 import com.securelock.ai.ui.components.SecureTopBar
 import com.securelock.ai.ui.components.WhiteSecurityCard
-import com.securelock.ai.ui.theme.CrispWhite
-import com.securelock.ai.ui.theme.DeepNavy
-import com.securelock.ai.ui.theme.ElectricBlue
-import com.securelock.ai.ui.theme.SlateText
 
 @Composable
 fun AppLockScreen(
@@ -63,7 +61,7 @@ fun AppLockScreen(
 
     val permissions = remember(context) { PermissionHelper.getSnapshot(context) }
 
-    val installedApps = remember(context, settings.protectedPackages) {
+    val installedApps = remember(context, settings.protectedPackages, settings.perAppLockMethods) {
         val pm = context.packageManager
         val mainIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         val resolved = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -89,7 +87,8 @@ fun AppLockScreen(
                 InstalledAppItem(
                     packageName = pkg,
                     appName = label,
-                    isLocked = settings.protectedPackages.contains(pkg)
+                    isLocked = settings.protectedPackages.contains(pkg),
+                    overrideMethod = settings.perAppLockMethods[pkg]
                 )
             }
             .sortedWith(compareByDescending<InstalledAppItem> { it.isLocked }.thenBy { it.appName.lowercase() })
@@ -104,7 +103,7 @@ fun AppLockScreen(
     }
 
     Scaffold(
-        containerColor = DeepNavy,
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             SecureTopBar(
                 title = "App Lock",
@@ -129,14 +128,14 @@ fun AppLockScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "Android does not allow ordinary apps to silently enforce system-wide locking. You must explicitly enable Display Over Other Apps plus either Usage Access or Accessibility Service.",
+                            text = "Android does not allow ordinary apps to silently enforce system-wide locking. Enable Display Over Other Apps plus either Usage Access or Accessibility Service.",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = SlateText
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(
                                 onClick = onOpenPermissions,
-                                colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                             ) {
                                 Text("Review Permissions")
                             }
@@ -162,14 +161,11 @@ fun AppLockScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
+                                Text("Protect Android Settings", style = MaterialTheme.typography.titleMedium)
                                 Text(
-                                    text = "Protect Android Settings",
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                                Text(
-                                    text = "Prompt unlock when System Settings opens",
+                                    "Prompt unlock when System Settings opens",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = SlateText
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             Switch(
@@ -180,18 +176,37 @@ fun AppLockScreen(
                             )
                         }
 
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Lock on Screen Off", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    "Immediately relock all apps when display turns off",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = settings.lockOnScreenOff,
+                                onCheckedChange = { enabled ->
+                                    repository.updateSettings { it.copy(lockOnScreenOff = enabled) }
+                                }
+                            )
+                        }
+
                         Text(
-                            text = "Auto-Relock Timeout",
+                            text = "Auto-Relock Delay",
                             style = MaterialTheme.typography.labelMedium,
-                            color = SlateText
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(0 to "Immediate", 30 to "30s", 120 to "2m", 300 to "5m").forEach { (sec, label) ->
+                            listOf(0 to "Immediate", 15 to "15s", 30 to "30s", 120 to "2m", 300 to "5m").forEach { (sec, label) ->
                                 FilterChip(
                                     selected = settings.relockTimeoutSeconds == sec,
-                                    onClick = {
-                                        repository.updateSettings { it.copy(relockTimeoutSeconds = sec) }
-                                    },
+                                    onClick = { repository.updateSettings { it.copy(relockTimeoutSeconds = sec) } },
                                     label = { Text(label) }
                                 )
                             }
@@ -209,10 +224,8 @@ fun AppLockScreen(
                     singleLine = true,
                     shape = RoundedCornerShape(16.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = CrispWhite,
-                        unfocusedContainerColor = CrispWhite,
-                        focusedTextColor = DeepNavy,
-                        unfocusedTextColor = DeepNavy
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -220,36 +233,69 @@ fun AppLockScreen(
 
             items(filteredApps, key = { it.packageName }) { app ->
                 WhiteSecurityCard {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = app.appName,
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = app.packageName,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = SlateText
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(app.appName, style = MaterialTheme.typography.titleMedium)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    app.packageName,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = app.isLocked,
+                                onCheckedChange = { shouldLock ->
+                                    repository.updateSettings { current ->
+                                        val updatedSet = if (shouldLock) {
+                                            current.protectedPackages + app.packageName
+                                        } else {
+                                            current.protectedPackages - app.packageName
+                                        }
+                                        current.copy(protectedPackages = updatedSet)
+                                    }
+                                }
                             )
                         }
-                        Switch(
-                            checked = app.isLocked,
-                            onCheckedChange = { shouldLock ->
-                                repository.updateSettings { current ->
-                                    val updatedSet = if (shouldLock) {
-                                        current.protectedPackages + app.packageName
-                                    } else {
-                                        current.protectedPackages - app.packageName
-                                    }
-                                    current.copy(protectedPackages = updatedSet)
+
+                        if (app.isLocked) {
+                            Text(
+                                text = "Per-App Lock Method",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                item {
+                                    FilterChip(
+                                        selected = app.overrideMethod == null,
+                                        onClick = {
+                                            repository.updateSettings { current ->
+                                                current.copy(perAppLockMethods = current.perAppLockMethods - app.packageName)
+                                            }
+                                        },
+                                        label = { Text("Global") }
+                                    )
+                                }
+                                items(LockMethod.entries) { method ->
+                                    FilterChip(
+                                        selected = app.overrideMethod == method,
+                                        onClick = {
+                                            repository.updateSettings { current ->
+                                                current.copy(
+                                                    perAppLockMethods = current.perAppLockMethods + (app.packageName to method)
+                                                )
+                                            }
+                                        },
+                                        label = { Text(method.label) }
+                                    )
                                 }
                             }
-                        )
+                        }
                     }
                 }
             }

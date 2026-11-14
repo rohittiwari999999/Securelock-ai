@@ -3,6 +3,7 @@ package com.securelock.ai.security
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import java.nio.ByteBuffer
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -14,8 +15,8 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.PBEKeySpec
 
 /**
- * Hardware-backed Android Keystore AES-256-GCM encryption and PBKDF2WithHmacSHA256
- * salted credential hashing. Zero hardcoded secrets and zero plaintext PIN storage.
+ * Hardware-backed Android Keystore AES-256-GCM encryption (strings and binary media)
+ * and PBKDF2WithHmacSHA256 salted credential hashing. Zero hardcoded secrets.
  */
 object KeystoreCryptoManager {
 
@@ -75,6 +76,45 @@ object KeystoreCryptoManager {
                 GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv)
             )
             String(cipher.doFinal(ciphertext), Charsets.UTF_8)
+        }.getOrNull()
+    }
+
+    /**
+     * Encrypts binary media payloads (vault photos/videos, intruder snapshots) with
+     * [4-byte IV length][IV bytes][AES-256-GCM ciphertext].
+     */
+    fun encryptBytes(plainBytes: ByteArray): ByteArray {
+        val cipher = Cipher.getInstance(AES_TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateMasterKey())
+        val iv = cipher.iv
+        val ciphertext = cipher.doFinal(plainBytes)
+        return ByteBuffer.allocate(4 + iv.size + ciphertext.size)
+            .putInt(iv.size)
+            .put(iv)
+            .put(ciphertext)
+            .array()
+    }
+
+    fun decryptBytes(encryptedPayload: ByteArray): ByteArray? {
+        if (encryptedPayload.size < 16) return null
+        return runCatching {
+            val buffer = ByteBuffer.wrap(encryptedPayload)
+            val ivLength = buffer.int
+            if (ivLength <= 0 || ivLength > 32 || ivLength + 4 > encryptedPayload.size) {
+                return null
+            }
+            val iv = ByteArray(ivLength)
+            buffer.get(iv)
+            val ciphertext = ByteArray(buffer.remaining())
+            buffer.get(ciphertext)
+
+            val cipher = Cipher.getInstance(AES_TRANSFORMATION)
+            cipher.init(
+                Cipher.DECRYPT_MODE,
+                getOrCreateMasterKey(),
+                GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv)
+            )
+            cipher.doFinal(ciphertext)
         }.getOrNull()
     }
 

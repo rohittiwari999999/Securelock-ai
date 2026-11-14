@@ -11,6 +11,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.securelock.ai.security.SecureStorageRepository
+import com.securelock.ai.security.VaultRepository
 import com.securelock.ai.service.AppLockSessionManager
 import com.securelock.ai.ui.screens.AppLockScreen
 import com.securelock.ai.ui.screens.CameraPrivacyMonitorScreen
@@ -22,18 +23,22 @@ import com.securelock.ai.ui.screens.PermissionsManagerScreen
 import com.securelock.ai.ui.screens.PrivateBrowserScreen
 import com.securelock.ai.ui.screens.SettingsScreen
 import com.securelock.ai.ui.screens.StatisticsScreen
+import com.securelock.ai.ui.screens.ThemeCustomizationScreen
 import com.securelock.ai.ui.screens.UnlockScreen
+import com.securelock.ai.ui.screens.VaultScreen
 
 object Routes {
     const val UNLOCK = "unlock"
     const val DASHBOARD = "dashboard"
     const val APP_LOCK = "app_lock"
+    const val VAULT = "vault"
     const val INTRUDER_SELFIE = "intruder_selfie"
     const val LOCK_NOTIFICATIONS = "lock_notifications"
     const val FAKE_CRASH = "fake_crash"
     const val CAMERA_MONITOR = "camera_monitor"
     const val PRIVATE_BROWSER = "private_browser"
     const val STATISTICS = "statistics"
+    const val THEME_CUSTOMIZATION = "theme_customization"
     const val SETTINGS = "settings"
     const val PERMISSIONS = "permissions"
 }
@@ -41,7 +46,8 @@ object Routes {
 @Composable
 fun SecureLockNavHost(
     activity: FragmentActivity,
-    repository: SecureStorageRepository
+    repository: SecureStorageRepository,
+    vaultRepository: VaultRepository
 ) {
     val navController = rememberNavController()
     val settings by repository.settings.collectAsState()
@@ -61,6 +67,7 @@ fun SecureLockNavHost(
                 activity = activity,
                 repository = repository,
                 targetPackageLabel = "SecureLock AI",
+                targetPackageName = null,
                 isSetupFlow = needsSetup,
                 onUnlocked = {
                     AppLockSessionManager.unlockVault()
@@ -75,6 +82,7 @@ fun SecureLockNavHost(
         composable(Routes.DASHBOARD) {
             DashboardScreen(
                 repository = repository,
+                vaultRepository = vaultRepository,
                 onNavigate = { route -> navController.navigate(route) },
                 onLockNow = {
                     AppLockSessionManager.lockVault()
@@ -91,6 +99,15 @@ fun SecureLockNavHost(
                 repository = repository,
                 onBack = { navController.popBackStack() },
                 onOpenPermissions = { navController.navigate(Routes.PERMISSIONS) }
+            )
+        }
+
+        composable(Routes.VAULT) {
+            VaultScreen(
+                activity = activity,
+                repository = repository,
+                vaultRepository = vaultRepository,
+                onBack = { navController.popBackStack() }
             )
         }
 
@@ -142,11 +159,19 @@ fun SecureLockNavHost(
             )
         }
 
+        composable(Routes.THEME_CUSTOMIZATION) {
+            ThemeCustomizationScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
         composable(Routes.SETTINGS) {
             SettingsScreen(
                 repository = repository,
                 onBack = { navController.popBackStack() },
-                onOpenPermissions = { navController.navigate(Routes.PERMISSIONS) }
+                onOpenPermissions = { navController.navigate(Routes.PERMISSIONS) },
+                onOpenThemes = { navController.navigate(Routes.THEME_CUSTOMIZATION) }
             )
         }
 

@@ -3,8 +3,8 @@ package com.securelock.ai.service
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Coordinates automatic relocking and configurable grace timeouts for unlocked apps
- * and for SecureLock AI itself across Activity/Process lifecycle transitions.
+ * Coordinates automatic relocking, lock-on-screen-off, and configurable grace timeouts
+ * for unlocked apps and for SecureLock AI & Secret Gallery Vault across lifecycle transitions.
  */
 object AppLockSessionManager {
 
@@ -12,6 +12,10 @@ object AppLockSessionManager {
 
     @Volatile
     var isVaultUnlocked: Boolean = false
+        private set
+
+    @Volatile
+    var isMediaVaultUnlocked: Boolean = false
         private set
 
     @Volatile
@@ -24,7 +28,16 @@ object AppLockSessionManager {
 
     fun lockVault() {
         isVaultUnlocked = false
+        isMediaVaultUnlocked = false
         vaultUnlockedAtMillis = 0L
+    }
+
+    fun unlockMediaVault() {
+        isMediaVaultUnlocked = true
+    }
+
+    fun lockMediaVault() {
+        isMediaVaultUnlocked = false
     }
 
     fun evaluateVaultTimeout(timeoutSeconds: Int) {

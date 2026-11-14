@@ -1,6 +1,5 @@
 package com.securelock.ai.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
@@ -8,49 +7,19 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.securelock.ai.data.AppThemeMode
+import com.securelock.ai.data.AppThemeId
+import com.securelock.ai.data.CardStyleMode
 
-private val NavyLightCardColorScheme = lightColorScheme(
-    primary = ElectricBlue,
-    onPrimary = CrispWhite,
-    primaryContainer = Color(0xFFDBEAFE),
-    onPrimaryContainer = DeepNavy,
-    secondary = SkyAccent,
-    onSecondary = DeepNavy,
-    background = DeepNavy,
-    onBackground = CrispWhite,
-    surface = CrispWhite,
-    onSurface = DeepNavy,
-    surfaceVariant = CoolCanvas,
-    onSurfaceVariant = SlateText,
-    outline = SlateBorder,
-    error = CrimsonAlert,
-    onError = CrispWhite
-)
-
-private val NavyDarkColorScheme = darkColorScheme(
-    primary = ElectricBlue,
-    onPrimary = CrispWhite,
-    primaryContainer = MidnightBlue,
-    onPrimaryContainer = SkyAccent,
-    secondary = SkyAccent,
-    onSecondary = DeepNavy,
-    background = DeepNavy,
-    onBackground = CrispWhite,
-    surface = MidnightBlue,
-    onSurface = CrispWhite,
-    surfaceVariant = NavySurface,
-    onSurfaceVariant = Color(0xFF94A3B8),
-    outline = Color(0xFF1E3A5F),
-    error = CrimsonAlert,
-    onError = CrispWhite
-)
+val LocalCardStyleMode = staticCompositionLocalOf { CardStyleMode.ELEVATED }
+val LocalThemePalette = staticCompositionLocalOf { paletteForTheme(AppThemeId.MIDNIGHT_BLUE) }
 
 private val SecureTypography = Typography(
     headlineLarge = TextStyle(
@@ -94,19 +63,75 @@ private val SecureShapes = Shapes(
 
 @Composable
 fun SecureLockTheme(
-    themeMode: AppThemeMode = AppThemeMode.NAVY_LIGHT_CARDS,
+    themeId: AppThemeId = AppThemeId.MIDNIGHT_BLUE,
+    customAccentHex: Long? = null,
+    forceLightMode: Boolean? = null,
+    cardStyleMode: CardStyleMode = CardStyleMode.ELEVATED,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when (themeMode) {
-        AppThemeMode.NAVY_LIGHT_CARDS -> NavyLightCardColorScheme
-        AppThemeMode.NAVY_DARK -> NavyDarkColorScheme
-        AppThemeMode.SYSTEM -> if (isSystemInDarkTheme()) NavyDarkColorScheme else NavyLightCardColorScheme
+    val palette = paletteForTheme(themeId)
+    val accent = customAccentHex?.let { Color(it) } ?: palette.primaryAccent
+    val useDarkCards = when (forceLightMode) {
+        true -> false
+        false -> true
+        null -> palette.defaultDarkCards
+    }
+    val isPureLightBackground = themeId == AppThemeId.PURE_WHITE && forceLightMode != false
+    val bgColor = if (forceLightMode == true && themeId != AppThemeId.PURE_WHITE) {
+        palette.background
+    } else if (isPureLightBackground) {
+        Color(0xFFF1F5F9)
+    } else {
+        palette.background
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = SecureTypography,
-        shapes = SecureShapes,
-        content = content
-    )
+    val colorScheme = if (useDarkCards) {
+        darkColorScheme(
+            primary = accent,
+            onPrimary = CrispWhite,
+            primaryContainer = palette.surfaceVariant,
+            onPrimaryContainer = palette.secondaryAccent,
+            secondary = palette.secondaryAccent,
+            onSecondary = DeepNavy,
+            background = bgColor,
+            onBackground = if (isPureLightBackground) DeepNavy else CrispWhite,
+            surface = palette.cardDark,
+            onSurface = CrispWhite,
+            surfaceVariant = palette.surfaceVariant,
+            onSurfaceVariant = Color(0xFF94A3B8),
+            outline = Color(0xFF283A5A),
+            error = CrimsonAlert,
+            onError = CrispWhite
+        )
+    } else {
+        lightColorScheme(
+            primary = accent,
+            onPrimary = CrispWhite,
+            primaryContainer = accent.copy(alpha = 0.12f),
+            onPrimaryContainer = DeepNavy,
+            secondary = palette.secondaryAccent,
+            onSecondary = DeepNavy,
+            background = bgColor,
+            onBackground = if (isPureLightBackground) DeepNavy else CrispWhite,
+            surface = palette.cardLight,
+            onSurface = DeepNavy,
+            surfaceVariant = CoolCanvas,
+            onSurfaceVariant = SlateText,
+            outline = SlateBorder,
+            error = CrimsonAlert,
+            onError = CrispWhite
+        )
+    }
+
+    CompositionLocalProvider(
+        LocalCardStyleMode provides cardStyleMode,
+        LocalThemePalette provides palette.copy(primaryAccent = accent)
+    ) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = SecureTypography,
+            shapes = SecureShapes,
+            content = content
+        )
+    }
 }

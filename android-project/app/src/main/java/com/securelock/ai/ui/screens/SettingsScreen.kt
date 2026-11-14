@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -34,34 +37,35 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.securelock.ai.data.AppLanguage
-import com.securelock.ai.data.AppThemeMode
+import com.securelock.ai.data.LockMethod
 import com.securelock.ai.security.PermissionHelper
 import com.securelock.ai.security.SecureStorageRepository
 import com.securelock.ai.ui.components.PatternLockPad
 import com.securelock.ai.ui.components.SecureTopBar
 import com.securelock.ai.ui.components.WhiteSecurityCard
 import com.securelock.ai.ui.theme.CrimsonAlert
-import com.securelock.ai.ui.theme.DeepNavy
-import com.securelock.ai.ui.theme.ElectricBlue
 import com.securelock.ai.ui.theme.EmeraldSafe
-import com.securelock.ai.ui.theme.SlateText
 
 @Composable
 fun SettingsScreen(
     repository: SecureStorageRepository,
     onBack: () -> Unit,
-    onOpenPermissions: () -> Unit
+    onOpenPermissions: () -> Unit,
+    onOpenThemes: () -> Unit
 ) {
     val context = LocalContext.current
     val settings by repository.settings.collectAsState()
 
     var showChangePinDialog by remember { mutableStateOf(false) }
     var showChangePatternDialog by remember { mutableStateOf(false) }
+    var showChangePasswordDialog by remember { mutableStateOf(false) }
     var showPrivacyPolicyDialog by remember { mutableStateOf(false) }
     var regeneratedRecovery by remember { mutableStateOf<String?>(null) }
     var backupStatus by remember { mutableStateOf<String?>(null) }
@@ -97,11 +101,11 @@ fun SettingsScreen(
     }
 
     Scaffold(
-        containerColor = DeepNavy,
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             SecureTopBar(
                 title = "Settings & Recovery",
-                subtitle = "Offline local security controls",
+                subtitle = "Lock systems, timing & offline backup",
                 onBack = onBack
             )
         }
@@ -116,16 +120,35 @@ fun SettingsScreen(
             item {
                 WhiteSecurityCard {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Authentication & Credentials", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("Default Lock Method", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(LockMethod.entries) { method ->
+                                FilterChip(
+                                    selected = settings.preferredLockMethod == method,
+                                    onClick = {
+                                        when (method) {
+                                            LockMethod.PATTERN -> if (!repository.hasPatternConfigured()) showChangePatternDialog = true else repository.updateSettings { it.copy(preferredLockMethod = method) }
+                                            LockMethod.PASSWORD -> if (!repository.hasPasswordConfigured()) showChangePasswordDialog = true else repository.updateSettings { it.copy(preferredLockMethod = method) }
+                                            else -> repository.updateSettings { it.copy(preferredLockMethod = method) }
+                                        }
+                                    },
+                                    label = { Text(method.label) }
+                                )
+                            }
+                        }
+
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(
                                 onClick = { showChangePinDialog = true },
-                                colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                             ) {
                                 Text("Change PIN")
                             }
                             OutlinedButton(onClick = { showChangePatternDialog = true }) {
                                 Text("Set Pattern")
+                            }
+                            OutlinedButton(onClick = { showChangePasswordDialog = true }) {
+                                Text("Set Password")
                             }
                         }
 
@@ -136,7 +159,11 @@ fun SettingsScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Fingerprint / Biometric Unlock", style = MaterialTheme.typography.titleMedium)
-                                Text("Uses Android BiometricPrompt API", style = MaterialTheme.typography.bodyMedium, color = SlateText)
+                                Text(
+                                    "Uses Android BiometricPrompt API",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                             Switch(
                                 checked = settings.biometricEnabled,
@@ -158,9 +185,29 @@ fun SettingsScreen(
             item {
                 WhiteSecurityCard {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Auto-Lock Timing", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("Auto-Lock & Screen-Off", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Lock on Screen Off", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    "Relock vault & apps when display locks",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = settings.lockOnScreenOff,
+                                onCheckedChange = { enabled ->
+                                    repository.updateSettings { it.copy(lockOnScreenOff = enabled) }
+                                }
+                            )
+                        }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(0 to "Immediate", 30 to "30s", 120 to "2m", 300 to "5m").forEach { (sec, label) ->
+                            listOf(0 to "Immediate", 15 to "15s", 30 to "30s", 120 to "2m", 300 to "5m").forEach { (sec, label) ->
                                 FilterChip(
                                     selected = settings.relockTimeoutSeconds == sec,
                                     onClick = { repository.updateSettings { it.copy(relockTimeoutSeconds = sec) } },
@@ -175,19 +222,12 @@ fun SettingsScreen(
             item {
                 WhiteSecurityCard {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Appearance & Language", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(
-                                AppThemeMode.NAVY_LIGHT_CARDS to "Navy + White",
-                                AppThemeMode.NAVY_DARK to "Navy Dark",
-                                AppThemeMode.SYSTEM to "System"
-                            ).forEach { (mode, label) ->
-                                FilterChip(
-                                    selected = settings.themeMode == mode,
-                                    onClick = { repository.updateSettings { it.copy(themeMode = mode) } },
-                                    label = { Text(label) }
-                                )
-                            }
+                        Text("Themes, Icons & Language", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Button(
+                            onClick = onOpenThemes,
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {
+                            Text("Open Theme Studio (8 Themes & Icons)")
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             AppLanguage.entries.take(3).forEach { lang ->
@@ -212,7 +252,7 @@ fun SettingsScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(
                                 onClick = { exportBackupLauncher.launch("securelock_local_backup.json") },
-                                colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                             ) {
                                 Text("Export Backup")
                             }
@@ -237,23 +277,33 @@ fun SettingsScreen(
     if (showChangePinDialog) {
         var currentPin by remember { mutableStateOf("") }
         var newPin by remember { mutableStateOf("") }
+        var confirmPin by remember { mutableStateOf("") }
         var err by remember { mutableStateOf<String?>(null) }
 
         AlertDialog(
             onDismissRequest = { showChangePinDialog = false },
-            title = { Text("Change Master PIN") },
+            title = { Text("Change PIN (4, 6, or Custom 4–12 Digits)") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = currentPin,
-                        onValueChange = { if (it.length <= 6 && it.all(Char::isDigit)) currentPin = it },
+                        onValueChange = { if (it.length <= 12 && it.all(Char::isDigit)) currentPin = it },
                         label = { Text("Current PIN") },
+                        visualTransformation = PasswordVisualTransformation(),
                         singleLine = true
                     )
                     OutlinedTextField(
                         value = newPin,
-                        onValueChange = { if (it.length <= 6 && it.all(Char::isDigit)) newPin = it },
-                        label = { Text("New 4-6 Digit PIN") },
+                        onValueChange = { if (it.length <= 12 && it.all(Char::isDigit)) newPin = it },
+                        label = { Text("New PIN (4–12 digits)") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = confirmPin,
+                        onValueChange = { if (it.length <= 12 && it.all(Char::isDigit)) confirmPin = it },
+                        label = { Text("Confirm New PIN") },
+                        visualTransformation = PasswordVisualTransformation(),
                         singleLine = true
                     )
                     err?.let { Text(it, color = CrimsonAlert, style = MaterialTheme.typography.labelMedium) }
@@ -264,7 +314,9 @@ fun SettingsScreen(
                     if (!repository.verifyPin(currentPin)) {
                         err = "Current PIN is incorrect"
                     } else if (newPin.length < 4) {
-                        err = "New PIN must be 4-6 digits"
+                        err = "New PIN must be 4–12 digits"
+                    } else if (newPin != confirmPin) {
+                        err = "New PINs do not match"
                     } else {
                         repository.setPin(newPin)
                         showChangePinDialog = false
@@ -280,6 +332,7 @@ fun SettingsScreen(
     }
 
     if (showChangePatternDialog) {
+        var firstPattern by remember { mutableStateOf<List<Int>?>(null) }
         var patternStatus by remember { mutableStateOf("Draw a pattern connecting at least 4 dots") }
         AlertDialog(
             onDismissRequest = { showChangePatternDialog = false },
@@ -291,9 +344,15 @@ fun SettingsScreen(
                         onPatternComplete = { nodes ->
                             if (nodes.size < 4) {
                                 patternStatus = "Connect at least 4 nodes"
-                            } else {
+                            } else if (firstPattern == null) {
+                                firstPattern = nodes
+                                patternStatus = "Draw the same pattern again to confirm"
+                            } else if (firstPattern == nodes) {
                                 repository.setPattern(nodes)
                                 showChangePatternDialog = false
+                            } else {
+                                firstPattern = null
+                                patternStatus = "Patterns did not match. Draw again."
                             }
                         }
                     )
@@ -306,13 +365,61 @@ fun SettingsScreen(
         )
     }
 
+    if (showChangePasswordDialog) {
+        var newPass by remember { mutableStateOf("") }
+        var confirmPass by remember { mutableStateOf("") }
+        var passErr by remember { mutableStateOf<String?>(null) }
+
+        AlertDialog(
+            onDismissRequest = { showChangePasswordDialog = false },
+            title = { Text("Set Alphanumeric Password") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = newPass,
+                        onValueChange = { newPass = it },
+                        label = { Text("New Password (6+ chars)") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = confirmPass,
+                        onValueChange = { confirmPass = it },
+                        label = { Text("Confirm Password") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        singleLine = true
+                    )
+                    passErr?.let { Text(it, color = CrimsonAlert, style = MaterialTheme.typography.labelMedium) }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (newPass.length < 6) {
+                        passErr = "Password must be at least 6 characters"
+                    } else if (newPass != confirmPass) {
+                        passErr = "Passwords do not match"
+                    } else {
+                        repository.setPassword(newPass)
+                        repository.updateSettings { it.copy(preferredLockMethod = LockMethod.PASSWORD) }
+                        showChangePasswordDialog = false
+                    }
+                }) {
+                    Text("Save Password")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showChangePasswordDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
     if (regeneratedRecovery != null) {
         AlertDialog(
             onDismissRequest = { regeneratedRecovery = null },
             title = { Text("New Recovery Code") },
-            text = {
-                Text("Save this code offline in a safe place: ${regeneratedRecovery!!}")
-            },
+            text = { Text("Save this code offline in a safe place: ${regeneratedRecovery!!}") },
             confirmButton = {
                 Button(onClick = { regeneratedRecovery = null }) { Text("Done") }
             }
@@ -325,7 +432,7 @@ fun SettingsScreen(
             title = { Text("Offline-First Privacy Policy") },
             text = {
                 Text(
-                    "SecureLock AI operates 100% offline. PINs and patterns are salted and hashed with PBKDF2WithHmacSHA256, settings and logs are encrypted using Android Keystore AES-256-GCM, camera access occurs strictly in the visible foreground with your consent, and notification masking or private browsing history never leaves your device."
+                    "SecureLock AI operates 100% offline. Credentials are salted and hashed with PBKDF2WithHmacSHA256, settings and vault files are encrypted with Android Keystore AES-256-GCM, camera access occurs strictly in the foreground with your consent, and zero private media or notifications leave your device."
                 )
             },
             confirmButton = {
@@ -366,7 +473,7 @@ fun PermissionsManagerScreen(
     }
 
     Scaffold(
-        containerColor = DeepNavy,
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             SecureTopBar(
                 title = "Permissions Manager",
@@ -458,7 +565,7 @@ private fun PermissionRowCard(
                     fontWeight = FontWeight.Bold
                 )
             }
-            Text(description, style = MaterialTheme.typography.bodyMedium, color = SlateText)
+            Text(description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedButton(onClick = onConfigure) {
                 Text(if (granted) "Review in Settings" else "Grant Permission")
             }

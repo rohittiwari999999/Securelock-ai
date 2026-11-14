@@ -9,11 +9,23 @@ Native Kotlin + Jetpack Compose + Material 3 offline-first Android security appl
 3. Run on a physical device or Android Emulator (API 26–36):
    - Enroll a fingerprint in **Android Settings > Security > Fingerprint** (or Emulator Extended Controls > Fingerprint) to test `BiometricPrompt`.
    - On first launch, create a 4–6 digit master PIN and record your one-time Emergency Recovery Code.
-4. Build optimized release APK/AAB:
+4. Build optimized release APK/AAB locally:
    ```bash
-   ./gradlew assembleRelease
+   ./gradlew assembleRelease bundleRelease
    ```
    Release builds enable `isMinifyEnabled = true`, `isShrinkResources = true`, R8 log stripping (`proguard-rules.pro`), and ABI splits (`armeabi-v7a`, `arm64-v8a`, `x86_64`).
+
+## Automated Cloud Build via GitHub Actions (APK & AAB)
+
+This project includes `.github/workflows/build-android.yml` so you can generate `.apk` and `.aab` files in the cloud without installing Android Studio:
+
+1. Extract `SecureLockAI-AndroidStudio.zip` and push the **contents** of the folder (make sure the hidden `.github/workflows/build-android.yml` file is at your GitHub repository root) to the `main` or `master` branch.
+2. Open your repository on GitHub and go to the **Actions** tab (you can also trigger it manually via **Run workflow**).
+3. Once the **Build APK & Play Store AAB** run completes, scroll down to **Artifacts** and download:
+   - `SecureLockAI-Debug-APK` (signed universal + ABI APKs, ready to install directly on Android)
+   - `SecureLockAI-Release-APKs` (R8-minified release APKs)
+   - `SecureLockAI-PlayStore-AAB` (Android App Bundle `.aab`)
+4. *(Optional for signed Play Store releases)* Add these 4 Repository Secrets under **Settings > Secrets and variables > Actions**: `ANDROID_KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, and `KEY_PASSWORD`.
 
 ## Features Supported via Official Android APIs
 

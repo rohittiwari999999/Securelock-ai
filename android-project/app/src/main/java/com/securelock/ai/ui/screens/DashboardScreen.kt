@@ -1,6 +1,5 @@
 package com.securelock.ai.ui.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,7 +22,9 @@ import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PhotoCameraFront
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
@@ -46,18 +46,13 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.securelock.ai.security.SecureStorageRepository
+import com.securelock.ai.security.VaultRepository
 import com.securelock.ai.ui.components.SecureTopBar
 import com.securelock.ai.ui.components.WhiteSecurityCard
 import com.securelock.ai.ui.navigation.Routes
 import com.securelock.ai.ui.theme.AmberWarn
 import com.securelock.ai.ui.theme.CrimsonAlert
-import com.securelock.ai.ui.theme.CrispWhite
-import com.securelock.ai.ui.theme.DeepNavy
-import com.securelock.ai.ui.theme.ElectricBlue
 import com.securelock.ai.ui.theme.EmeraldSafe
-import com.securelock.ai.ui.theme.MidnightBlue
-import com.securelock.ai.ui.theme.SkyAccent
-import com.securelock.ai.ui.theme.SlateText
 
 private data class DashboardModuleCard(
     val title: String,
@@ -71,6 +66,7 @@ private data class DashboardModuleCard(
 @Composable
 fun DashboardScreen(
     repository: SecureStorageRepository,
+    vaultRepository: VaultRepository,
     onNavigate: (String) -> Unit,
     onLockNow: () -> Unit
 ) {
@@ -78,19 +74,35 @@ fun DashboardScreen(
     val stats by repository.statistics.collectAsState()
     val intruders by repository.intruders.collectAsState()
     val maskedNotifications by repository.notifications.collectAsState()
+    val vaultItems by vaultRepository.mediaItems.collectAsState()
+
+    val primary = MaterialTheme.colorScheme.primary
+    val secondary = MaterialTheme.colorScheme.secondary
+    val bg = MaterialTheme.colorScheme.background
+    val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
+    val fg = MaterialTheme.colorScheme.onBackground
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
 
     val cards = listOf(
         DashboardModuleCard(
             title = "App Lock",
-            subtitle = "Protect installed apps with PIN, pattern, or biometrics",
-            metric = "${settings.protectedPackages.size} Protected",
+            subtitle = "Per-app PIN, pattern, password & biometrics",
+            metric = "${settings.protectedPackages.size} Locked",
             icon = Icons.Default.Lock,
-            accent = ElectricBlue,
+            accent = primary,
             route = Routes.APP_LOCK
         ),
         DashboardModuleCard(
-            title = "Intruder Selfie",
-            subtitle = "Failed attempts log & foreground camera capture",
+            title = "Secret Gallery Vault",
+            subtitle = "Encrypted private photos, videos & albums",
+            metric = "${vaultItems.size} Items",
+            icon = Icons.Default.PhotoLibrary,
+            accent = primary,
+            route = Routes.VAULT
+        ),
+        DashboardModuleCard(
+            title = "Intruder Detection",
+            subtitle = "Failed attempt threshold & foreground capture",
             metric = "${intruders.size} Events",
             icon = Icons.Default.PhotoCameraFront,
             accent = CrimsonAlert,
@@ -98,22 +110,22 @@ fun DashboardScreen(
         ),
         DashboardModuleCard(
             title = "Lock Notifications",
-            subtitle = "Local-only notification preview privacy vault",
+            subtitle = "Local-only notification privacy vault",
             metric = if (settings.lockNotificationsEnabled) "${maskedNotifications.size} Masked" else "Paused",
             icon = Icons.Default.NotificationsOff,
-            accent = ElectricBlue,
+            accent = primary,
             route = Routes.LOCK_NOTIFICATIONS
         ),
         DashboardModuleCard(
-            title = "Fake App Crash",
-            subtitle = "Customizable neutral App Unavailable gate",
+            title = "Fake Crash Screen",
+            subtitle = "Simulated decoy gates inside protection flow",
             metric = if (settings.protectionScreenConfig.enabled) "Active" else "Off",
             icon = Icons.Default.WarningAmber,
             accent = AmberWarn,
             route = Routes.FAKE_CRASH
         ),
         DashboardModuleCard(
-            title = "Camera Privacy Monitor",
+            title = "Camera Privacy",
             subtitle = "Camera permissions, indicators & live self-test",
             metric = "Monitor",
             icon = Icons.Default.CameraAlt,
@@ -125,25 +137,33 @@ fun DashboardScreen(
             subtitle = "Multi-tab WebView with zero history persistence",
             metric = "Incognito",
             icon = Icons.Default.Language,
-            accent = ElectricBlue,
+            accent = primary,
             route = Routes.PRIVATE_BROWSER
         ),
         DashboardModuleCard(
             title = "Statistics",
-            subtitle = "Weekly unlock analytics & security event timeline",
-            metric = "${stats.totalAttempts} Attempts",
+            subtitle = "Weekly unlock analytics & security event log",
+            metric = "${stats.totalAttempts} Tries",
             icon = Icons.Default.BarChart,
-            accent = SkyAccent,
+            accent = secondary,
             route = Routes.STATISTICS
+        ),
+        DashboardModuleCard(
+            title = "Theme Customization",
+            subtitle = "8 themes, custom accents & launcher icons",
+            metric = settings.themeId.displayName,
+            icon = Icons.Default.Palette,
+            accent = primary,
+            route = Routes.THEME_CUSTOMIZATION
         )
     )
 
     Scaffold(
-        containerColor = DeepNavy,
+        containerColor = bg,
         topBar = {
             SecureTopBar(
                 title = "SecureLock AI",
-                subtitle = "Offline Privacy & App Vault",
+                subtitle = "Offline Privacy & Vault Suite",
                 actions = {
                     IconButton(onClick = { onNavigate(Routes.PERMISSIONS) }) {
                         Icon(Icons.Default.Security, contentDescription = "Permissions Manager")
@@ -167,7 +187,7 @@ fun DashboardScreen(
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Surface(
                     shape = RoundedCornerShape(22.dp),
-                    color = MidnightBlue,
+                    color = surfaceVariant,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -180,14 +200,14 @@ fun DashboardScreen(
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
-                                color = ElectricBlue.copy(alpha = 0.2f),
+                                color = primary.copy(alpha = 0.2f),
                                 modifier = Modifier.size(48.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = Icons.Default.Shield,
                                         contentDescription = null,
-                                        tint = SkyAccent,
+                                        tint = secondary,
                                         modifier = Modifier.size(28.dp)
                                     )
                                 }
@@ -197,17 +217,17 @@ fun DashboardScreen(
                                 Text(
                                     text = "Keystore Encryption Active",
                                     style = MaterialTheme.typography.titleMedium,
-                                    color = CrispWhite
+                                    color = fg
                                 )
                                 Text(
-                                    text = "Offline-first · ${settings.protectedPackages.size} apps locked · ${stats.failedAttempts} failed tries",
+                                    text = "${settings.protectedPackages.size} apps · ${vaultItems.size} vault files · ${stats.failedAttempts} failed tries",
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = SkyAccent
+                                    color = secondary
                                 )
                             }
                         }
                         TextButton(onClick = onLockNow) {
-                            Text("Lock", color = SkyAccent, fontWeight = FontWeight.SemiBold)
+                            Text("Lock", color = secondary, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -225,7 +245,7 @@ fun DashboardScreen(
                         ) {
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
-                                color = item.accent.copy(alpha = 0.12f),
+                                color = item.accent.copy(alpha = 0.14f),
                                 modifier = Modifier.size(40.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
@@ -252,7 +272,7 @@ fun DashboardScreen(
                         Text(
                             text = item.subtitle,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = SlateText,
+                            color = muted,
                             maxLines = 2
                         )
                     }

@@ -5,19 +5,21 @@ export interface ProjectFileEntry {
   name: string;
   category: string;
   content: string;
-  language: 'kotlin' | 'xml' | 'gradle' | 'markdown' | 'proguard';
+  language: 'kotlin' | 'xml' | 'gradle' | 'markdown' | 'proguard' | 'yaml';
 }
 
 export type SimulatorScreenId =
   | 'unlock'
   | 'dashboard'
   | 'app_lock'
+  | 'vault'
   | 'intruder_selfie'
   | 'lock_notifications'
   | 'fake_crash'
   | 'camera_monitor'
   | 'private_browser'
   | 'statistics'
+  | 'theme_customization'
   | 'settings'
   | 'permissions';
 
@@ -30,7 +32,7 @@ export interface ScreenArchitectureSpec {
   summary: string;
 }
 
-const rawModules = import.meta.glob('/android-project/**/*', {
+const rawModules = import.meta.glob(['/android-project/**/*', '/android-project/.github/**/*'], {
   query: '?raw',
   import: 'default',
   eager: true,
@@ -41,10 +43,12 @@ function detectLanguage(path: string): ProjectFileEntry['language'] {
   if (path.endsWith('.xml')) return 'xml';
   if (path.endsWith('.md')) return 'markdown';
   if (path.endsWith('.pro')) return 'proguard';
+  if (path.endsWith('.yml') || path.endsWith('.yaml')) return 'yaml';
   return 'gradle';
 }
 
 function detectCategory(path: string): string {
+  if (path.startsWith('.github/')) return 'CI/CD (GitHub Actions)';
   if (path.includes('/ui/screens/')) return 'Compose Screens';
   if (path.includes('/ui/components/') || path.includes('/ui/theme/') || path.includes('/ui/navigation/')) {
     return 'UI Theme & Navigation';
@@ -74,61 +78,76 @@ export const ANDROID_PROJECT_FILES: ProjectFileEntry[] = Object.entries(rawModul
 export const SCREEN_SPECS: Record<SimulatorScreenId, ScreenArchitectureSpec> = {
   unlock: {
     id: 'unlock',
-    title: 'Fingerprint, PIN & Pattern Unlock',
+    title: 'Multi-Method Unlock Gate & Biometrics',
     kotlinPath: 'app/src/main/java/com/securelock/ai/ui/screens/UnlockScreen.kt',
     apis: [
       'androidx.biometric.BiometricPrompt',
-      'BiometricManager.Authenticators.BIOMETRIC_STRONG',
+      '4-digit / 6-digit / Custom PIN + Pattern + Password',
       'PBKDF2WithHmacSHA256 (120,000 iterations)',
-      'AndroidKeyStore AES-256-GCM',
+      'Per-app LockMethod resolution',
     ],
     androidCompatibility:
-      'MainActivity extends FragmentActivity for BiometricPrompt compatibility on Android 8.0 through Android 16. Credentials are never stored in plaintext or hardcoded.',
+      'MainActivity extends FragmentActivity for BiometricPrompt compatibility on Android 8.0–16. Dynamically adopts all 8 themes and custom accent colors.',
     summary:
-      'Verifies user identity via BiometricPrompt, salted PIN, or 3x3 Pattern Canvas, logging local attempts and offering an explicit foreground camera prompt after repeated failures.',
+      'Supports 4/6/custom PINs, 3x3 Pattern Lock, Alphanumeric Passwords, and BiometricPrompt with configurable intruder attempt threshold and foreground snapshot prompt.',
   },
   dashboard: {
     id: 'dashboard',
-    title: '7-Module Security Dashboard',
+    title: '9-Module Security Dashboard',
     kotlinPath: 'app/src/main/java/com/securelock/ai/ui/screens/DashboardScreen.kt',
     apis: [
-      'Material 3 LazyVerticalGrid',
-      'ProcessLifecycleOwner auto-relock',
-      'StateFlow reactive storage',
+      'Material 3 LazyVerticalGrid (9 modules)',
+      'ProcessLifecycleOwner + ACTION_SCREEN_OFF relock',
+      'StateFlow reactive encrypted storage',
     ],
     androidCompatibility:
       'Uses enableEdgeToEdge() and Material 3 adaptive grid sizing for phones, foldables, and tablets on Android 15–16.',
     summary:
-      'Deep Navy header with Keystore status and 7 white rounded security cards: App Lock, Intruder Selfie, Lock Notifications, Fake App Crash, Camera Privacy Monitor, Private Browser, and Statistics.',
+      'Premium 9-card dashboard: App Lock, Secret Gallery Vault, Intruder Detection, Lock Notifications, Fake Crash Screen, Camera Privacy, Private Browser, Statistics, and Theme Customization.',
   },
   app_lock: {
     id: 'app_lock',
-    title: 'App Lock & Installed App Selector',
+    title: 'App Lock & Per-App Auth Preferences',
     kotlinPath: 'app/src/main/java/com/securelock/ai/ui/screens/AppLockScreen.kt',
     apis: [
       'PackageManager.queryIntentActivities (<queries>)',
-      'UsageStatsManager (PACKAGE_USAGE_STATS)',
-      'AppLockAccessibilityService (TYPE_WINDOW_STATE_CHANGED)',
-      'Settings.canDrawOverlays (SYSTEM_ALERT_WINDOW)',
+      'Per-app LockMethod overrides',
+      'Intent.ACTION_SCREEN_OFF immediate relock',
+      'UsageStatsManager / Accessibility + Overlay',
     ],
     androidCompatibility:
-      'Uses <queries> for ACTION_MAIN + CATEGORY_LAUNCHER instead of broad QUERY_ALL_PACKAGES. Explicitly discloses that Usage Access / Accessibility + Overlay permissions are required on Android 10–16.',
+      'Uses <queries> for ACTION_MAIN + CATEGORY_LAUNCHER on Android 11–16. Discloses Usage Access / Accessibility + Display Over Other Apps requirements honestly.',
     summary:
-      'Lists user-launchable installed apps, configures per-app lock toggles, protects System Settings, and sets automatic relock grace timeouts.',
+      'Select installed apps, assign per-app lock methods (PIN, pattern, password), enable lock-on-screen-off, and configure relock delays.',
+  },
+  vault: {
+    id: 'vault',
+    title: 'Secret Gallery Vault (AES-256-GCM)',
+    kotlinPath: 'app/src/main/java/com/securelock/ai/ui/screens/VaultScreen.kt',
+    apis: [
+      'AndroidKeyStore AES-256-GCM binary file cipher',
+      'ActivityResultContracts.OpenMultipleDocuments',
+      'In-memory image decoding + wiped temp video playback',
+      'StatFs storage meter & SAF encrypted backup/restore',
+    ],
+    androidCompatibility:
+      'Stores encrypted .slv files exclusively inside app-private filesDir/vault/ without leaving unprotected copies. Uses SAF for multi-select import and authenticated export on Android 8–16.',
+    summary:
+      'Private photo & video vault with multiple albums (create, rename, safe delete), PIN/fingerprint gate, grid/list layouts, search, private viewer, and encrypted backup/restore.',
   },
   intruder_selfie: {
     id: 'intruder_selfie',
-    title: 'Intruder Alert & Foreground Capture',
+    title: 'Intruder Detection & Foreground Capture',
     kotlinPath: 'app/src/main/java/com/securelock/ai/ui/screens/IntruderSelfieScreen.kt',
     apis: [
+      'Configurable attempt threshold (1, 2, 3, 5 tries)',
       'CameraX ProcessCameraProvider + ImageCapture',
-      'ActivityResultContracts.RequestPermission (CAMERA)',
-      'App-private filesDir/intruders/',
+      'Keystore-encrypted private intruder storage',
     ],
     androidCompatibility:
-      'Strictly respects Android 9–16 background camera restrictions. Never triggers silent background camera access; offers a visible foreground capture prompt and stores images privately.',
+      'Strictly respects Android 14–16 background camera restrictions. Never triggers silent background camera access or bypasses hardware privacy dots.',
     summary:
-      'Tracks failed authentication timestamps locally, lets the user capture a foreground verification snapshot, and provides private viewing and deletion.',
+      'Tracks failed authentication attempts with timestamps, target app, and lock method; supports explicit foreground camera snapshots and encrypted event gallery deletion.',
   },
   lock_notifications: {
     id: 'lock_notifications',
@@ -146,16 +165,16 @@ export const SCREEN_SPECS: Record<SimulatorScreenId, ScreenArchitectureSpec> = {
   },
   fake_crash: {
     id: 'fake_crash',
-    title: 'Customizable App Protection Cover',
+    title: 'Fake Crash / Simulated Decoy Screens',
     kotlinPath: 'app/src/main/java/com/securelock/ai/ui/screens/FakeCrashScreen.kt',
     apis: [
       'LockOverlayActivity (FLAG_SECURE)',
-      'AppProtectionGateScreen Composable',
+      'DecoyMode enum (6 simulated templates)',
     ],
     androidCompatibility:
-      'Presents a neutral "App Unavailable" protection cover before authentication while strictly avoiding imitation of Android OS system crash dialogs.',
+      'Triggers strictly inside SecureLock protection flow, requires authentication to exit, clearly marks screens as simulated, and never impersonates genuine OS dialogs.',
     summary:
-      'Allows custom heading, neutral message, cover icon, and background color, with a direct path to authenticate and unlock.',
+      'Choose from App Has Stopped (Simulated), Application Unavailable, Loading Error, Network Error, Blank Screen, or Custom Error Message.',
   },
   camera_monitor: {
     id: 'camera_monitor',
@@ -167,9 +186,9 @@ export const SCREEN_SPECS: Record<SimulatorScreenId, ScreenArchitectureSpec> = {
       'CameraX PreviewView self-test',
     ],
     androidCompatibility:
-      'Displays real-time sensor availability via CameraManager.AvailabilityCallback and directs users to Android 12–16 system Privacy Dashboard controls.',
+      'Displays real-time sensor availability via CameraManager.AvailabilityCallback and links to Android 12–16 system Privacy Dashboard controls.',
     summary:
-      'Shows CAMERA permission state, active sensor availability, OS privacy indicator guidance, and a user-initiated CameraX preview test.',
+      'Shows CAMERA permission state, sensor availability, OS privacy indicator guidance, and a user-controlled CameraX preview test.',
   },
   private_browser: {
     id: 'private_browser',
@@ -179,12 +198,11 @@ export const SCREEN_SPECS: Record<SimulatorScreenId, ScreenArchitectureSpec> = {
       'android.webkit.WebView (LOAD_NO_CACHE)',
       'WebSettingsCompat.setSafeBrowsingEnabled',
       'CookieManager & WebStorage wipe',
-      'DownloadManager confirmation',
     ],
     androidCompatibility:
-      'Uses androidx.webkit Safe Browsing on API 26–36, disables cookies and DOM storage, warns on unencrypted HTTP URLs, and clears all data on exit.',
+      'Uses androidx.webkit Safe Browsing on API 26–36, disables cookies and DOM storage, warns on unencrypted HTTP URLs, and wipes all data on exit.',
     summary:
-      'Multi-tab incognito browser with DuckDuckGo search, back/forward navigation, HTTP safety prompts, and confirmed downloads.',
+      'Multi-tab incognito browser with DuckDuckGo search, back/forward navigation, HTTP safety warnings, and confirmed downloads.',
   },
   statistics: {
     id: 'statistics',
@@ -199,19 +217,32 @@ export const SCREEN_SPECS: Record<SimulatorScreenId, ScreenArchitectureSpec> = {
     summary:
       'Displays protected app counts, total/successful/failed unlocks, a 7-day stacked activity chart, and a chronological security event log.',
   },
+  theme_customization: {
+    id: 'theme_customization',
+    title: '8-Theme Engine & Custom App Icons',
+    kotlinPath: 'app/src/main/java/com/securelock/ai/ui/screens/ThemeCustomizationScreen.kt',
+    apis: [
+      'Material 3 dynamic ColorScheme + CompositionLocal',
+      'PackageManager.setComponentEnabledSetting (<activity-alias>)',
+    ],
+    androidCompatibility:
+      'Switches launcher icons cleanly using 4 <activity-alias> declarations in AndroidManifest.xml across Android 8.0–16 without breaking app launch.',
+    summary:
+      '8 themes (Midnight Blue, Black Gold, Neon Purple, Pure White, Dark AMOLED, Cyber Green, Ocean Blue, Rose Gold), custom accents, light/dark toggle, card styles, and custom app icons.',
+  },
   settings: {
     id: 'settings',
-    title: 'Settings, Backup & Recovery',
+    title: 'Settings, Lock Systems & Recovery',
     kotlinPath: 'app/src/main/java/com/securelock/ai/ui/screens/SettingsScreen.kt',
     apis: [
-      'ActivityResultContracts.CreateDocument',
-      'ActivityResultContracts.OpenDocument',
+      '4/6/Custom PIN + Pattern + Alphanumeric Password',
+      'ActivityResultContracts.CreateDocument / OpenDocument',
       'SecureRandom recovery code generation',
     ],
     androidCompatibility:
       'Uses Storage Access Framework for local JSON backup/restore without requiring broad external storage permissions on Android 10–16.',
     summary:
-      'Manages PIN/Pattern updates, BiometricPrompt toggle, auto-lock timing, theme, language, local backup/restore, and emergency recovery.',
+      'Configures lock systems with credential confirmation, biometrics, lock-on-screen-off, relock delay, local backup/restore, and emergency recovery.',
   },
   permissions: {
     id: 'permissions',

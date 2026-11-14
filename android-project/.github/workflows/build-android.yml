@@ -1,0 +1,74 @@
+name: Build SecureLock AI (APK & AAB)
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    name: Build APK & Play Store AAB
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Decode optional release keystore
+        id: keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 --decode > "${{ runner.temp }}/release.keystore"
+            echo "ANDROID_KEYSTORE_PATH=${{ runner.temp }}/release.keystore" >> "$GITHUB_ENV"
+            echo "has_keystore=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_keystore=false" >> "$GITHUB_OUTPUT"
+            echo "No ANDROID_KEYSTORE_BASE64 secret set; building signed Debug APK + unsigned Release APK/AAB."
+          fi
+
+      - name: Run Unit Tests & Build APK / AAB
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          gradle testDebugUnitTest assembleDebug assembleRelease bundleRelease --no-daemon --stacktrace
+
+      - name: Upload Installable Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SecureLockAI-Debug-APK
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Upload Release APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: SecureLockAI-Release-APKs
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+      - name: Upload Play Store Bundle (AAB)
+        uses: actions/upload-artifact@v4
+        with:
+          name: SecureLockAI-PlayStore-AAB
+          path: app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error

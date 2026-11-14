@@ -1,5 +1,8 @@
 <resources>
     <string name="app_name">SecureLock AI</string>
+    <string name="icon_label_vault">Private Vault</string>
+    <string name="icon_label_minimal">Locker</string>
+    <string name="icon_label_utility">Notes &amp; Tools</string>
     <string name="accessibility_service_label">SecureLock App Protection Monitor</string>
     <string name="accessibility_service_description">Detects when a user-selected protected application enters the foreground so SecureLock AI can present the authentication screen. Never reads screen text, passwords, or keystrokes.</string>
     <string name="notification_listener_label">SecureLock Notification Privacy</string>

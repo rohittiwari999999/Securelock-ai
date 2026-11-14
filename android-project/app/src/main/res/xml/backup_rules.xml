@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
     <exclude domain="sharedpref" path="securelock_keystore_prefs.xml" />
+    <exclude domain="sharedpref" path="securelock_vault_index.xml" />
     <exclude domain="file" path="intruders/" />
+    <exclude domain="file" path="vault/" />
 </full-backup-content>

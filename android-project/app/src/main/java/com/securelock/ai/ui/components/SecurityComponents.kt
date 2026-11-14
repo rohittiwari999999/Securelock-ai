@@ -1,8 +1,8 @@
 package com.securelock.ai.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,10 +11,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -40,7 +38,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -52,11 +49,9 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.securelock.ai.ui.theme.CrispWhite
-import com.securelock.ai.ui.theme.DeepNavy
-import com.securelock.ai.ui.theme.ElectricBlue
-import com.securelock.ai.ui.theme.SkyAccent
-import com.securelock.ai.ui.theme.SlateText
+import com.securelock.ai.data.CardStyleMode
+import com.securelock.ai.ui.theme.LocalCardStyleMode
+import com.securelock.ai.ui.theme.LocalThemePalette
 import kotlin.math.hypot
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -67,12 +62,16 @@ fun SecureTopBar(
     onBack: (() -> Unit)? = null,
     actions: @Composable () -> Unit = {}
 ) {
+    val bg = MaterialTheme.colorScheme.background
+    val fg = MaterialTheme.colorScheme.onBackground
+    val accent = MaterialTheme.colorScheme.secondary
+
     TopAppBar(
         colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = DeepNavy,
-            titleContentColor = CrispWhite,
-            navigationIconContentColor = CrispWhite,
-            actionIconContentColor = CrispWhite
+            containerColor = bg,
+            titleContentColor = fg,
+            navigationIconContentColor = fg,
+            actionIconContentColor = fg
         ),
         navigationIcon = {
             if (onBack != null) {
@@ -89,13 +88,13 @@ fun SecureTopBar(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
-                    color = CrispWhite
+                    color = fg
                 )
                 if (subtitle != null) {
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.labelMedium,
-                        color = SkyAccent
+                        color = accent
                     )
                 }
             }
@@ -110,30 +109,49 @@ fun WhiteSecurityCard(
     onClick: (() -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
+    val cardStyle = LocalCardStyleMode.current
+    val shape = when (cardStyle) {
+        CardStyleMode.ELEVATED -> RoundedCornerShape(20.dp)
+        CardStyleMode.OUTLINED -> RoundedCornerShape(18.dp)
+        CardStyleMode.COMPACT -> RoundedCornerShape(14.dp)
+    }
+    val elevation = when (cardStyle) {
+        CardStyleMode.ELEVATED -> CardDefaults.cardElevation(defaultElevation = 2.dp)
+        CardStyleMode.OUTLINED -> CardDefaults.cardElevation(defaultElevation = 0.dp)
+        CardStyleMode.COMPACT -> CardDefaults.cardElevation(defaultElevation = 1.dp)
+    }
+    val border = if (cardStyle == CardStyleMode.OUTLINED) {
+        BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    } else null
+    val pad = if (cardStyle == CardStyleMode.COMPACT) 12.dp else 16.dp
+
     val cardColors = CardDefaults.cardColors(
         containerColor = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.onSurface
     )
+
     if (onClick != null) {
         Card(
             onClick = onClick,
             modifier = modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
+            shape = shape,
             colors = cardColors,
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            elevation = elevation,
+            border = border
         ) {
-            Box(modifier = Modifier.padding(16.dp)) {
+            Box(modifier = Modifier.padding(pad)) {
                 content()
             }
         }
     } else {
         Card(
             modifier = modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
+            shape = shape,
             colors = cardColors,
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            elevation = elevation,
+            border = border
         ) {
-            Box(modifier = Modifier.padding(16.dp)) {
+            Box(modifier = Modifier.padding(pad)) {
                 content()
             }
         }
@@ -150,18 +168,22 @@ fun PinKeypad(
     biometricIcon: ImageVector? = null
 ) {
     val haptic = LocalHapticFeedback.current
+    val fg = MaterialTheme.colorScheme.onBackground
+    val accent = MaterialTheme.colorScheme.secondary
+    val primary = MaterialTheme.colorScheme.primary
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            repeat(maxLength) { index ->
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            repeat(maxLength.coerceAtMost(12)) { index ->
                 val filled = index < enteredLength
                 Box(
                     modifier = Modifier
-                        .size(14.dp)
+                        .size(if (maxLength > 8) 10.dp else 14.dp)
                         .clip(CircleShape)
-                        .background(if (filled) SkyAccent else CrispWhite.copy(alpha = 0.25f))
+                        .background(if (filled) accent else fg.copy(alpha = 0.25f))
                 )
             }
         }
@@ -195,13 +217,13 @@ fun PinKeypad(
                     onClick = onBiometricClick,
                     modifier = Modifier.size(68.dp),
                     shape = CircleShape,
-                    color = ElectricBlue.copy(alpha = 0.25f)
+                    color = primary.copy(alpha = 0.25f)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = biometricIcon,
                             contentDescription = "Biometric unlock",
-                            tint = SkyAccent,
+                            tint = accent,
                             modifier = Modifier.size(28.dp)
                         )
                     }
@@ -225,13 +247,13 @@ fun PinKeypad(
                 },
                 modifier = Modifier.size(68.dp),
                 shape = CircleShape,
-                color = CrispWhite.copy(alpha = 0.1f)
+                color = fg.copy(alpha = 0.1f)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Backspace,
                         contentDescription = "Delete digit",
-                        tint = CrispWhite
+                        tint = fg
                     )
                 }
             }
@@ -244,18 +266,19 @@ private fun PinKeyButton(
     label: String,
     onClick: () -> Unit
 ) {
+    val fg = MaterialTheme.colorScheme.onBackground
     Surface(
         onClick = onClick,
         modifier = Modifier.size(68.dp),
         shape = CircleShape,
-        color = CrispWhite.copy(alpha = 0.12f)
+        color = fg.copy(alpha = 0.12f)
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
                 text = label,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = CrispWhite
+                color = fg
             )
         }
     }
@@ -269,6 +292,8 @@ fun PatternLockPad(
     val haptic = LocalHapticFeedback.current
     val selectedNodes = remember { mutableStateListOf<Int>() }
     var activePointer by remember { mutableStateOf<Offset?>(null) }
+    val palette = LocalThemePalette.current
+    val fg = MaterialTheme.colorScheme.onBackground
 
     Box(
         modifier = modifier
@@ -323,7 +348,7 @@ fun PatternLockPad(
                 }
                 drawPath(
                     path = path,
-                    color = SkyAccent,
+                    color = palette.secondaryAccent,
                     style = Stroke(width = 8f, cap = StrokeCap.Round, join = StrokeJoin.Round)
                 )
             }
@@ -331,12 +356,12 @@ fun PatternLockPad(
             centers.forEachIndexed { index, center ->
                 val isSelected = selectedNodes.contains(index)
                 drawCircle(
-                    color = if (isSelected) ElectricBlue.copy(alpha = 0.35f) else CrispWhite.copy(alpha = 0.10f),
+                    color = if (isSelected) palette.primaryAccent.copy(alpha = 0.35f) else fg.copy(alpha = 0.10f),
                     radius = 34f,
                     center = center
                 )
                 drawCircle(
-                    color = if (isSelected) SkyAccent else CrispWhite.copy(alpha = 0.75f),
+                    color = if (isSelected) palette.secondaryAccent else fg.copy(alpha = 0.75f),
                     radius = if (isSelected) 14f else 10f,
                     center = center
                 )

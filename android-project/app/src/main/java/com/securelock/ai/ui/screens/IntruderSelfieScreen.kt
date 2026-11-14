@@ -15,12 +15,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,6 +28,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -60,9 +59,6 @@ import com.securelock.ai.security.SecureStorageRepository
 import com.securelock.ai.ui.components.SecureTopBar
 import com.securelock.ai.ui.components.WhiteSecurityCard
 import com.securelock.ai.ui.theme.CrimsonAlert
-import com.securelock.ai.ui.theme.DeepNavy
-import com.securelock.ai.ui.theme.ElectricBlue
-import com.securelock.ai.ui.theme.SlateText
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -91,11 +87,11 @@ fun IntruderSelfieScreen(
     }
 
     Scaffold(
-        containerColor = DeepNavy,
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             SecureTopBar(
-                title = "Intruder Selfie",
-                subtitle = "Foreground-only & private storage",
+                title = "Intruder Detection",
+                subtitle = "Threshold: ${settings.intruderAttemptThreshold} attempts · Encrypted",
                 onBack = onBack
             )
         }
@@ -117,14 +113,14 @@ fun IntruderSelfieScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Foreground Intruder Prompt",
+                                    text = "Foreground Intruder Capture",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Offers an explicit camera prompt after 3 failed attempts. Never captures secretly or in background.",
+                                    text = "Offers a visible foreground camera prompt when failed attempts reach threshold. Never secretly activates camera.",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = SlateText
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             Switch(
@@ -137,12 +133,31 @@ fun IntruderSelfieScreen(
                             )
                         }
 
+                        Text(
+                            text = "Attempt Threshold",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(1, 2, 3, 5).forEach { count ->
+                                FilterChip(
+                                    selected = settings.intruderAttemptThreshold == count,
+                                    onClick = {
+                                        repository.updateSettings {
+                                            it.copy(intruderAttemptThreshold = count)
+                                        }
+                                    },
+                                    label = { Text("$count ${if (count == 1) "try" else "tries"}") }
+                                )
+                            }
+                        }
+
                         Button(
                             onClick = {
                                 if (cameraGranted) showLiveCaptureDialog = true
                                 else cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                         ) {
                             Icon(Icons.Default.CameraAlt, contentDescription = null)
                             Text("  Test Foreground Capture")
@@ -155,9 +170,9 @@ fun IntruderSelfieScreen(
                 item {
                     WhiteSecurityCard {
                         Text(
-                            text = "No failed-attempt intruder events recorded yet. All captured photos stay inside private app storage (filesDir/intruders) and never appear in the public gallery.",
+                            text = "No failed-attempt intruder events recorded yet. Captured snapshots are encrypted via Android Keystore inside private app storage.",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = SlateText
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -179,19 +194,19 @@ fun IntruderSelfieScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "${record.failedAttemptCount} Failed Attempts",
+                                    text = "${record.failedAttemptCount} Failed Attempt(s) · ${record.methodAttempted}",
                                     style = MaterialTheme.typography.titleMedium,
                                     color = CrimsonAlert
                                 )
                                 Text(
-                                    text = formattedTime,
+                                    text = "$formattedTime · Target: ${record.targetPackage}",
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = SlateText
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Text(
-                                    text = if (record.imagePath != null) "Private photo saved" else "Log entry only (no photo)",
+                                    text = if (record.imagePath != null) "Encrypted private photo attached (tap to view)" else "Event log only",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = SlateText
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             IconButton(onClick = { repository.deleteIntruderRecord(record) }) {
@@ -243,46 +258,56 @@ fun IntruderSelfieScreen(
             },
             confirmButton = {
                 Button(onClick = {
-                    val file = File(repository.getIntruderStorageDir(), "intruder_${UUID.randomUUID()}.jpg")
-                    val opts = ImageCapture.OutputFileOptions.Builder(file).build()
+                    val tempFile = File(context.cacheDir, "tmp_int_${UUID.randomUUID()}.jpg")
+                    val opts = ImageCapture.OutputFileOptions.Builder(tempFile).build()
                     imageCapture.takePicture(
                         opts,
                         ContextCompat.getMainExecutor(context),
                         object : ImageCapture.OnImageSavedCallback {
                             override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
-                                repository.addIntruderRecord(
-                                    failedAttemptCount = 1,
-                                    targetPackage = context.packageName,
-                                    imagePath = file.absolutePath
-                                )
+                                val bytes = runCatching { tempFile.readBytes() }.getOrNull()
+                                runCatching { tempFile.delete() }
+                                if (bytes != null) {
+                                    val encryptedPath = repository.saveEncryptedIntruderImage(bytes)
+                                    repository.addIntruderRecord(
+                                        failedAttemptCount = 1,
+                                        targetPackage = context.packageName,
+                                        methodAttempted = "Foreground Test",
+                                        imagePath = encryptedPath
+                                    )
+                                }
                                 showLiveCaptureDialog = false
                             }
 
                             override fun onError(exception: ImageCaptureException) {
+                                runCatching { tempFile.delete() }
                                 showLiveCaptureDialog = false
                             }
                         }
                     )
                 }) {
-                    Text("Save Privately")
+                    Text("Encrypt & Save")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showLiveCaptureDialog = false }) {
-                    Text("Cancel")
-                }
+                TextButton(onClick = { showLiveCaptureDialog = false }) { Text("Cancel") }
             }
         )
     }
 
     if (previewRecord != null) {
         val rec = previewRecord!!
-        val bitmap = remember(rec.imagePath) {
-            rec.imagePath?.let { BitmapFactory.decodeFile(it) }
+        val bitmap = remember(rec.id) {
+            val plain = repository.decryptIntruderImage(rec.imagePath)
+            plain?.let {
+                val bmp = BitmapFactory.decodeByteArray(it, 0, it.size)
+                it.fill(0)
+                bmp
+            }
         }
         AlertDialog(
             onDismissRequest = { previewRecord = null },
-            title = { Text("Private Intruder Snapshot") },
+            title = { Text("Encrypted Intruder Snapshot") },
             text = {
                 if (bitmap != null) {
                     Image(
@@ -295,7 +320,7 @@ fun IntruderSelfieScreen(
                             .clip(RoundedCornerShape(16.dp))
                     )
                 } else {
-                    Text("Image file is no longer available.")
+                    Text("Encrypted image file is no longer available.")
                 }
             },
             confirmButton = {
@@ -306,13 +331,11 @@ fun IntruderSelfieScreen(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = CrimsonAlert)
                 ) {
-                    Text("Delete Photo")
+                    Text("Delete Record")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { previewRecord = null }) {
-                    Text("Close")
-                }
+                TextButton(onClick = { previewRecord = null }) { Text("Close") }
             }
         )
     }

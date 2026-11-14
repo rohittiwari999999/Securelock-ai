@@ -19,6 +19,7 @@ import com.securelock.ai.ui.theme.SecureLockTheme
 /**
  * Dedicated FLAG_SECURE Activity displayed when a user-selected protected app enters
  * the foreground (requires Usage Access / Accessibility + Display Over Other Apps).
+ * Supports per-app lock methods and simulated decoy protection screens.
  */
 class LockOverlayActivity : FragmentActivity() {
 
@@ -40,7 +41,12 @@ class LockOverlayActivity : FragmentActivity() {
                 moveTaskToBack(true)
             }
 
-            SecureLockTheme(themeMode = settings.themeMode) {
+            SecureLockTheme(
+                themeId = settings.themeId,
+                customAccentHex = settings.customAccentHex,
+                forceLightMode = settings.forceLightMode,
+                cardStyleMode = settings.cardStyleMode
+            ) {
                 if (showProtectionCover) {
                     AppProtectionGateScreen(
                         config = settings.protectionScreenConfig,
@@ -52,6 +58,7 @@ class LockOverlayActivity : FragmentActivity() {
                         activity = this,
                         repository = repository,
                         targetPackageLabel = targetPackage,
+                        targetPackageName = targetPackage,
                         isSetupFlow = false,
                         onUnlocked = {
                             AppLockSessionManager.markAppUnlocked(

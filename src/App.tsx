@@ -14,14 +14,16 @@ type TopSection = 'preview' | 'source' | 'permissions' | 'setup';
 
 const SIMULATOR_NAV_LIST: Array<{ id: SimulatorScreenId; label: string }> = [
   { id: 'unlock', label: 'Unlock Gate' },
-  { id: 'dashboard', label: '7-Card Dashboard' },
+  { id: 'dashboard', label: '9-Card Dashboard' },
   { id: 'app_lock', label: 'App Lock' },
-  { id: 'intruder_selfie', label: 'Intruder Selfie' },
+  { id: 'vault', label: 'Secret Vault' },
+  { id: 'intruder_selfie', label: 'Intruder Detection' },
   { id: 'lock_notifications', label: 'Lock Notifications' },
-  { id: 'fake_crash', label: 'Fake App Crash' },
-  { id: 'camera_monitor', label: 'Camera Monitor' },
+  { id: 'fake_crash', label: 'Fake Crash' },
+  { id: 'camera_monitor', label: 'Camera Privacy' },
   { id: 'private_browser', label: 'Private Browser' },
   { id: 'statistics', label: 'Statistics' },
+  { id: 'theme_customization', label: 'Themes (8)' },
   { id: 'settings', label: 'Settings' },
   { id: 'permissions', label: 'Permissions' },
 ];
