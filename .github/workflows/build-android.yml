@@ -65,7 +65,8 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          gradle testDebugUnitTest assembleDebug assembleRelease bundleRelease --no-daemon --stacktrace
+          gradle testDebugUnitTest assembleDebug bundleRelease --no-daemon --stacktrace
+          gradle assembleRelease -PenableAbiSplits=true --no-daemon --stacktrace
 
       - name: Upload Installable Debug APK
         uses: actions/upload-artifact@v4
