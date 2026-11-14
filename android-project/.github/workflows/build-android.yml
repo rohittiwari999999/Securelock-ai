@@ -1,4 +1,4 @@
-name: Build SecureLock AI (APK & AAB)
+name: Build SecureLock AI (Signed APK & AAB)
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-android:
-    name: Build Signed APK & Play Store AAB
+    name: Build 2 Files (Signed APK & Signed AAB)
     runs-on: ubuntu-latest
 
     steps:
@@ -66,28 +66,23 @@ jobs:
             echo "KEY_PASSWORD=securelock_ci_pass" >> "$GITHUB_ENV"
           fi
 
-      - name: Run Unit Tests & Build Signed APKs / AAB
+      - name: Build Signed APK & Signed AAB
         run: |
-          gradle testFullDebugUnitTest bundleFullRelease --no-daemon --stacktrace
-          gradle assembleSideloadRelease assembleFullRelease -PenableAbiSplits=true --no-daemon --stacktrace
+          gradle testFullDebugUnitTest assembleSideloadRelease bundleFullRelease --no-daemon --stacktrace
+          mkdir -p build/final-outputs
+          cp app/build/outputs/apk/sideload/release/*.apk build/final-outputs/SecureLockAI-Signed.apk
+          cp app/build/outputs/bundle/fullRelease/*.aab build/final-outputs/SecureLockAI-Signed.aab
 
-      - name: Upload Sideload Installable APK (Play Protect Friendly)
+      - name: Upload Signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: SecureLockAI-Sideload-Installable-APK
-          path: app/build/outputs/apk/sideload/release/*universal*.apk
+          name: SecureLockAI-Signed-APK
+          path: build/final-outputs/SecureLockAI-Signed.apk
           if-no-files-found: error
 
-      - name: Upload Full Release APK (All Services, For ADB / Play Protect Off)
+      - name: Upload Signed AAB
         uses: actions/upload-artifact@v4
         with:
-          name: SecureLockAI-Full-APK
-          path: app/build/outputs/apk/full/release/*universal*.apk
-          if-no-files-found: error
-
-      - name: Upload Play Store Bundle (AAB - Full Features)
-        uses: actions/upload-artifact@v4
-        with:
-          name: SecureLockAI-PlayStore-AAB
-          path: app/build/outputs/bundle/fullRelease/*.aab
+          name: SecureLockAI-Signed-AAB
+          path: build/final-outputs/SecureLockAI-Signed.aab
           if-no-files-found: error
