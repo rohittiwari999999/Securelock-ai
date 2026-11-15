@@ -61,6 +61,8 @@ import com.securelock.ai.R
 import com.securelock.ai.data.CardStyleMode
 import com.securelock.ai.security.PermissionHelper
 import com.securelock.ai.ui.theme.AmberWarn
+import com.securelock.ai.ui.theme.CrimsonAlert
+import com.securelock.ai.ui.theme.EmeraldSafe
 import com.securelock.ai.ui.theme.LocalCardStyleMode
 import com.securelock.ai.ui.theme.LocalThemePalette
 import kotlin.math.hypot
@@ -415,6 +417,10 @@ fun AccessibilityHelpDialog(
     val serviceDeclared = remember(context) {
         PermissionHelper.hasAccessibilityServiceDeclared(context)
     }
+    val snapshot = remember(context, isAlreadyEnabled) {
+        PermissionHelper.getSnapshot(context)
+    }
+    val sideloadEngineReady = snapshot.overlayGranted && snapshot.usageStatsGranted
     val serviceLabel = remember(context) {
         context.getString(R.string.accessibility_service_label)
     }
@@ -424,7 +430,8 @@ fun AccessibilityHelpDialog(
         title = {
             Text(
                 text = when {
-                    !serviceDeclared -> "Use Overlay + Usage Access"
+                    !serviceDeclared && sideloadEngineReady -> "Accessibility Not Required"
+                    !serviceDeclared -> "Enable Overlay + Usage Access"
                     isAlreadyEnabled -> "Accessibility Service Active"
                     else -> "How to Enable Accessibility"
                 }
@@ -439,23 +446,90 @@ fun AccessibilityHelpDialog(
             ) {
                 if (!serviceDeclared) {
                     Text(
-                        text = "This sideload APK build uses Display Over Other Apps + Usage Access instead of Accessibility Service.",
+                        text = if (sideloadEngineReady) {
+                            "You do NOT need to turn on anything in Android Accessibility Settings! This APK uses Usage Access + Display Over Other Apps so Google Play Protect allows direct installation."
+                        } else {
+                            "This APK uses Display Over Other Apps + Usage Access instead of Accessibility Service (so it won't appear in Android Accessibility Settings)."
+                        },
                         style = MaterialTheme.typography.bodySmall
                     )
-                    onOpenOverlaySettings?.let { openOverlay ->
-                        Button(
-                            onClick = openOverlay,
-                            modifier = Modifier.fillMaxWidth()
+
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = (if (sideloadEngineReady) EmeraldSafe else AmberWarn).copy(alpha = 0.12f)
+                    ) {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp)
                         ) {
-                            Text("Allow Display Over Other Apps")
+                            Text(
+                                text = "• Display Over Other Apps: ${if (snapshot.overlayGranted) "Granted (Ready)" else "Missing"}",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (snapshot.overlayGranted) EmeraldSafe else CrimsonAlert
+                            )
+                            Text(
+                                text = "• Usage Access: ${if (snapshot.usageStatsGranted) "Granted (Ready)" else "Missing"}",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (snapshot.usageStatsGranted) EmeraldSafe else CrimsonAlert
+                            )
+                            Text(
+                                text = "• Battery Unrestricted: ${if (snapshot.ignoringBatteryOptimizations) "Granted (Ready)" else "Recommended"}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (snapshot.ignoringBatteryOptimizations) EmeraldSafe else AmberWarn
+                            )
                         }
                     }
-                    onOpenUsageAccessSettings?.let { openUsage ->
-                        OutlinedButton(
-                            onClick = openUsage,
-                            modifier = Modifier.fillMaxWidth()
+
+                    if (!snapshot.overlayGranted) {
+                        onOpenOverlaySettings?.let { openOverlay ->
+                            Button(
+                                onClick = openOverlay,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("1. Allow Display Over Other Apps")
+                            }
+                        }
+                    }
+                    if (!snapshot.usageStatsGranted) {
+                        onOpenUsageAccessSettings?.let { openUsage ->
+                            Button(
+                                onClick = openUsage,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("2. Grant Usage Access")
+                            }
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                    ) {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp)
                         ) {
-                            Text("Grant Usage Access")
+                            Text(
+                                text = "Vivo / iQOO / Xiaomi / Oppo / Realme Tip",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "If a locked app (like WhatsApp) opens without the lock screen: tap \"Open App Info\" -> Permissions / Other permissions -> allow \"Display pop-up windows while running in background\" and enable Autostart / Background running.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            OutlinedButton(
+                                onClick = onOpenAppInfo,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Open App Info (Pop-up / Autostart)")
+                            }
                         }
                     }
                 } else {

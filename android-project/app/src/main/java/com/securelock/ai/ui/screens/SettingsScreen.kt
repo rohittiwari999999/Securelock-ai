@@ -610,6 +610,12 @@ fun PermissionsManagerScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     var snapshot by remember { mutableStateOf(PermissionHelper.getSnapshot(context)) }
     var showAccessibilityHelpDialog by remember { mutableStateOf(false) }
+    val accessibilityDeclared = remember(context) {
+        PermissionHelper.hasAccessibilityServiceDeclared(context)
+    }
+    val notificationListenerDeclared = remember(context) {
+        PermissionHelper.hasNotificationListenerDeclared(context)
+    }
     val app = remember(context) { context.applicationContext as? com.securelock.ai.SecureLockApplication }
 
     fun openPermissionSettings(intent: android.content.Intent) {
@@ -680,24 +686,45 @@ fun PermissionsManagerScreen(
                     onConfigure = { openPermissionSettings(PermissionHelper.usageAccessSettingsIntent()) }
                 )
             }
-            item {
-                PermissionRowCard(
-                    title = "Accessibility Service (Instant Lock)",
-                    description = "Receives TYPE_WINDOW_STATE_CHANGED only (canRetrieveWindowContent = false). Look for \"SecureLock App Protection Monitor\".",
-                    granted = snapshot.accessibilityEnabled,
-                    onConfigure = { openAccessibilityDirectly() },
-                    configureLabel = if (snapshot.accessibilityEnabled) "Review in Settings" else "Open Directly",
-                    secondaryActionLabel = "How to Enable (?)",
-                    onSecondaryAction = { showAccessibilityHelpDialog = true }
-                )
+            if (accessibilityDeclared) {
+                item {
+                    PermissionRowCard(
+                        title = "Accessibility Service (Instant Lock)",
+                        description = "Receives TYPE_WINDOW_STATE_CHANGED only (canRetrieveWindowContent = false). Look for \"SecureLock App Protection Monitor\".",
+                        granted = snapshot.accessibilityEnabled,
+                        onConfigure = { openAccessibilityDirectly() },
+                        configureLabel = if (snapshot.accessibilityEnabled) "Review in Settings" else "Open Directly",
+                        secondaryActionLabel = "How to Enable (?)",
+                        onSecondaryAction = { showAccessibilityHelpDialog = true }
+                    )
+                }
+            } else {
+                item {
+                    val sideloadReady = snapshot.usageStatsGranted && snapshot.overlayGranted
+                    PermissionRowCard(
+                        title = "App Detection Mode (No Accessibility Needed)",
+                        description = if (sideloadReady) {
+                            "Display Over Other Apps & Usage Access are Granted. No Accessibility toggle is needed in Settings."
+                        } else {
+                            "This APK uses Display Over Other Apps + Usage Access instead of Accessibility Service."
+                        },
+                        granted = sideloadReady,
+                        grantedLabel = "Active (Ready)",
+                        missingLabel = "Setup Above",
+                        onConfigure = { showAccessibilityHelpDialog = true },
+                        configureLabel = "Protection Check / OEM Tip"
+                    )
+                }
             }
-            item {
-                PermissionRowCard(
-                    title = "Notification Listener (Optional)",
-                    description = "Allows local-only masking of sensitive notification previews for protected apps.",
-                    granted = snapshot.notificationListenerEnabled,
-                    onConfigure = { openPermissionSettings(PermissionHelper.notificationListenerSettingsIntent()) }
-                )
+            if (notificationListenerDeclared) {
+                item {
+                    PermissionRowCard(
+                        title = "Notification Listener (Optional)",
+                        description = "Allows local-only masking of sensitive notification previews for protected apps.",
+                        granted = snapshot.notificationListenerEnabled,
+                        onConfigure = { openPermissionSettings(PermissionHelper.notificationListenerSettingsIntent()) }
+                    )
+                }
             }
             item {
                 PermissionRowCard(
@@ -751,6 +778,8 @@ private fun PermissionRowCard(
     title: String,
     description: String,
     granted: Boolean,
+    grantedLabel: String = "Granted",
+    missingLabel: String = "Not Granted",
     onConfigure: () -> Unit,
     configureLabel: String? = null,
     secondaryActionLabel: String? = null,
@@ -765,7 +794,7 @@ private fun PermissionRowCard(
             ) {
                 Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 Text(
-                    text = if (granted) "Granted" else "Not Granted",
+                    text = if (granted) grantedLabel else missingLabel,
                     style = MaterialTheme.typography.labelMedium,
                     color = if (granted) EmeraldSafe else CrimsonAlert,
                     fontWeight = FontWeight.Bold

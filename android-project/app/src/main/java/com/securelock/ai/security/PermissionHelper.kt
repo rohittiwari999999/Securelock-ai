@@ -139,6 +139,22 @@ object PermissionHelper {
         }.getOrDefault(false)
     }
 
+    fun hasNotificationListenerDeclared(context: Context): Boolean {
+        return runCatching {
+            val comp = ComponentName(context, LockNotificationListenerService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getServiceInfo(
+                    comp,
+                    PackageManager.ComponentInfoFlags.of(0L)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getServiceInfo(comp, 0)
+            }
+            true
+        }.getOrDefault(false)
+    }
+
     fun accessibilitySettingsIntent(context: Context? = null): Intent {
         val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

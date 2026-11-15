@@ -234,10 +234,12 @@ fun AppLockScreen(
                                 if (permissions.accessibilityEnabled) {
                                     "Accessibility engine active (single-engine mode — zero conflict)."
                                 } else {
-                                    "Usage Access + Overlay engine active."
+                                    "Usage Access + Overlay engine active (no Accessibility needed)."
                                 }
-                            } else {
+                            } else if (accessibilityDeclared) {
                                 "To lock WhatsApp and other apps, enable Accessibility Service (recommended) or Display Over Other Apps + Usage Access:"
+                            } else {
+                                "To lock WhatsApp and other apps, allow Display Over Other Apps + Usage Access below (no Accessibility needed in this APK):"
                             },
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -251,8 +253,9 @@ fun AppLockScreen(
 
                         val detectLabel = when {
                             permissions.accessibilityEnabled -> "Accessibility Active (Instant)"
+                            permissions.usageStatsGranted && !accessibilityDeclared -> "Usage Access Active (Accessibility Not Needed)"
                             permissions.usageStatsGranted -> "Usage Access Granted"
-                            else -> "Missing (Enable Accessibility or Usage Access)"
+                            else -> if (accessibilityDeclared) "Missing (Enable Accessibility or Usage Access)" else "Missing (Grant Usage Access)"
                         }
                         Text(
                             text = "• App Detection: $detectLabel",
@@ -279,6 +282,12 @@ fun AppLockScreen(
                                 item {
                                     OutlinedButton(onClick = { showAccessibilityHelpDialog = true }) {
                                         Text("Accessibility Guide")
+                                    }
+                                }
+                            } else if (!accessibilityDeclared && engineReady) {
+                                item {
+                                    OutlinedButton(onClick = { showAccessibilityHelpDialog = true }) {
+                                        Text("OEM Pop-up Tip")
                                     }
                                 }
                             }

@@ -201,7 +201,7 @@ class AppLockMonitorService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setContentTitle("SecureLock AI Protection Active")
-            .setContentText("Pattern Lock protection active")
+            .setContentText("Pattern, PIN & Fingerprint protection active")
             .setContentIntent(openIntent)
             .setOngoing(true)
             .setSilent(true)
