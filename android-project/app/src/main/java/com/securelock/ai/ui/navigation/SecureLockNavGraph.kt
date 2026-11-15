@@ -177,9 +177,8 @@ fun SecureLockNavHost(
                 onBack = { navController.popBackStack() },
                 onTestAuthReturn = {
                     AppLockSessionManager.lockVault()
-                    vaultUnlocked = false
                     navController.navigate(Routes.UNLOCK) {
-                        popUpTo(Routes.DASHBOARD) { inclusive = true }
+                        popUpTo(0) { inclusive = true }
                     }
                 }
             )
