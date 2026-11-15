@@ -47,10 +47,40 @@ class SecurityLogicUnitTest {
         assertTrue(defaults.foregroundIntruderPromptEnabled)
         assertEquals(3, defaults.intruderAttemptThreshold)
         assertFalse(defaults.protectionScreenConfig.enabled)
-        assertFalse(defaults.secretDateConfig.enabled)
+        assertTrue(defaults.secretDateConfig.enabled)
         assertEquals(LockMethod.PIN_4, defaults.preferredLockMethod)
         assertEquals(AppThemeId.MIDNIGHT_BLUE, defaults.themeId)
         assertEquals(DecoyMode.APPLICATION_UNAVAILABLE, defaults.protectionScreenConfig.decoyMode)
+    }
+
+    @Test
+    fun secretDate_unconfiguredFallbackTodayWorksUntilCustomPinIsSet() {
+        val config = SecretDateConfig(enabled = true, day = 15, month = 6, year = null)
+        val today = Triple(14, 11, 2026)
+        var state = SecretTapState()
+        var now = 5_000L
+
+        repeat(4) {
+            state = (SecretDateUnlockEvaluator.registerDateTap(
+                state, config, hasSecretPin = false, day = 14, month = 11, year = 2026, nowMillis = now, fallbackToday = today
+            ) as SecretTapOutcome.Counting).nextState
+            now += 200L
+        }
+        val fifth = SecretDateUnlockEvaluator.registerDateTap(
+            state, config, hasSecretPin = false, day = 14, month = 11, year = 2026, nowMillis = now, fallbackToday = today
+        )
+        assertTrue(fifth is SecretTapOutcome.TriggerPinPrompt)
+
+        // Once custom Secret PIN is configured, today fallback no longer triggers unless it matches config
+        state = SecretTapState()
+        repeat(5) {
+            val outcome = SecretDateUnlockEvaluator.registerDateTap(
+                state, config, hasSecretPin = true, day = 14, month = 11, year = 2026, nowMillis = now, fallbackToday = today
+            )
+            assertTrue(outcome is SecretTapOutcome.Counting)
+            state = (outcome as SecretTapOutcome.Counting).nextState
+            now += 200L
+        }
     }
 
     @Test

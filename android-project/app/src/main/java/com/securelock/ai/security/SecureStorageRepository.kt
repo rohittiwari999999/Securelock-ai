@@ -53,13 +53,23 @@ class SecureStorageRepository(context: Context) {
     private val _notifications = MutableStateFlow(loadNotifications())
     val notifications: StateFlow<List<ProtectedNotificationRecord>> = _notifications.asStateFlow()
 
+    init {
+        if (!prefs.getBoolean(KEY_CALENDAR_DISGUISE_MIGRATED, false)) {
+            prefs.edit().putBoolean(KEY_CALENDAR_DISGUISE_MIGRATED, true).apply()
+            if (!hasSecretDatePinConfigured() && !_settings.value.secretDateConfig.enabled) {
+                updateSettings {
+                    it.copy(secretDateConfig = it.secretDateConfig.copy(enabled = true))
+                }
+            }
+        }
+    }
+
     fun hasPinConfigured(): Boolean = !prefs.getString(KEY_PIN_HASH, null).isNullOrEmpty()
     fun hasPatternConfigured(): Boolean = !prefs.getString(KEY_PATTERN_HASH, null).isNullOrEmpty()
     fun hasPasswordConfigured(): Boolean = !prefs.getString(KEY_PASSWORD_HASH, null).isNullOrEmpty()
     fun hasRecoveryCodeConfigured(): Boolean = !prefs.getString(KEY_RECOVERY_HASH, null).isNullOrEmpty()
     fun hasSecretDatePinConfigured(): Boolean = !prefs.getString(KEY_SECRET_DATE_PIN_HASH, null).isNullOrEmpty()
-    fun isSecretDateUnlockActive(): Boolean =
-        _settings.value.secretDateConfig.enabled && hasSecretDatePinConfigured()
+    fun isSecretDateUnlockActive(): Boolean = _settings.value.secretDateConfig.enabled
 
     fun configuredPinLength(): Int = prefs.getInt(KEY_PIN_LENGTH, 4)
 
@@ -200,6 +210,22 @@ class SecureStorageRepository(context: Context) {
                 )
             )
         }
+    }
+
+    fun setupInitialPinAndSecretDate(pin: String, day: Int, month: Int, year: Int) {
+        if (!hasPinConfigured()) {
+            setPin(pin)
+            if (!hasRecoveryCodeConfigured()) {
+                generateAndStoreRecoveryCode()
+            }
+        }
+        saveSecretDateConfiguration(
+            day = day,
+            month = month,
+            year = year,
+            enabled = true,
+            newSecretPin = pin
+        )
     }
 
     fun setSecretDateUnlockEnabled(enabled: Boolean) {
@@ -517,6 +543,7 @@ class SecureStorageRepository(context: Context) {
         private const val KEY_RECOVERY_HASH = "recovery_hash"
         private const val KEY_SECRET_DATE_PIN_HASH = "secret_date_pin_hash"
         private const val KEY_SECRET_DATE_RATE_STATE = "secret_date_rate_state"
+        private const val KEY_CALENDAR_DISGUISE_MIGRATED = "calendar_disguise_migrated"
         private const val KEY_SETTINGS = "settings_json"
         private const val KEY_STATS = "stats_json"
         private const val KEY_INTRUDERS = "intruders_json"

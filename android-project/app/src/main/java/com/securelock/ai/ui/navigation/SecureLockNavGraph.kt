@@ -57,25 +57,22 @@ fun SecureLockNavHost(
     val backStackEntry by navController.currentBackStackEntryAsState()
 
     val needsSetup = !repository.hasPinConfigured()
-    val secretDateActive = !needsSetup &&
-        settings.secretDateConfig.enabled &&
-        repository.hasSecretDatePinConfigured()
+    val secretDateActive = settings.secretDateConfig.enabled
 
     val startRoute = when {
-        needsSetup -> Routes.UNLOCK
         !vaultUnlocked && secretDateActive -> Routes.CALENDAR_LAUNCH
         !vaultUnlocked -> Routes.UNLOCK
         else -> Routes.DASHBOARD
     }
 
     // Automatically return to Calendar (or Unlock) when vault relocks in background / screen-off
-    LaunchedEffect(vaultUnlocked, secretDateActive, needsSetup) {
+    LaunchedEffect(vaultUnlocked, secretDateActive, backStackEntry) {
         val currentRoute = backStackEntry?.destination?.route
         if (!vaultUnlocked && currentRoute != null &&
             currentRoute != Routes.CALENDAR_LAUNCH &&
             currentRoute != Routes.UNLOCK
         ) {
-            val lockTarget = if (!needsSetup && secretDateActive) {
+            val lockTarget = if (secretDateActive) {
                 Routes.CALENDAR_LAUNCH
             } else {
                 Routes.UNLOCK
@@ -119,6 +116,8 @@ fun SecureLockNavHost(
         }
 
         composable(Routes.DASHBOARD) {
+            if (!vaultUnlocked) return@composable
+
             BackHandler(enabled = secretDateActive) {
                 AppLockSessionManager.lockVault()
                 navController.navigate(Routes.CALENDAR_LAUNCH) {

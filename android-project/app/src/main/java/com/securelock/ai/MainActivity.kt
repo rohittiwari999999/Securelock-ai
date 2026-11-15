@@ -18,10 +18,11 @@ import com.securelock.ai.ui.theme.SecureLockTheme
 class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-
         val app = application as SecureLockApplication
+        val enforceCalendarReset = !AppLockSessionManager.isVaultUnlocked &&
+            app.storageRepository.isSecretDateUnlockActive()
+        super.onCreate(if (enforceCalendarReset) null else savedInstanceState)
+        enableEdgeToEdge()
 
         setContent {
             val settings by app.storageRepository.settings.collectAsState()

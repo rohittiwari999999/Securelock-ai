@@ -197,7 +197,7 @@ data class LocalStatistics(
 
 @Serializable
 data class SecretDateConfig(
-    val enabled: Boolean = false,
+    val enabled: Boolean = true,
     val day: Int = 15,
     val month: Int = 6,
     val year: Int? = null

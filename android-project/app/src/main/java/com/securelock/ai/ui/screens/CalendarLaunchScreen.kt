@@ -137,6 +137,8 @@ fun CalendarLaunchScreen(
     var tapState by remember { mutableStateOf(SecretTapState()) }
     var showPinDialog by remember { mutableStateOf(false) }
     var pinInput by remember { mutableStateOf("") }
+    var confirmPinInput by remember { mutableStateOf("") }
+    var setupError by remember { mutableStateOf<String?>(null) }
 
     // Reset tap counter after inactivity timeout
     LaunchedEffect(tapState.lastTapAtMillis, tapState.tapCount) {
@@ -152,6 +154,8 @@ fun CalendarLaunchScreen(
             if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
                 tapState = SecretDateUnlockEvaluator.reset()
                 pinInput = ""
+                confirmPinInput = ""
+                setupError = null
                 showPinDialog = false
             }
         }
@@ -183,17 +187,50 @@ fun CalendarLaunchScreen(
 
     fun submitSecretPin() {
         val candidate = pinInput
+        val confirmCandidate = confirmPinInput
+        val isFirstTimeSetup = !repository.hasPinConfigured() && !repository.hasSecretDatePinConfigured()
+
+        if (isFirstTimeSetup) {
+            if (candidate.length !in 4..8) {
+                setupError = "Enter 4–8 digits"
+                return
+            }
+            if (candidate != confirmCandidate) {
+                setupError = "PINs do not match"
+                return
+            }
+            pinInput = ""
+            confirmPinInput = ""
+            setupError = null
+            showPinDialog = false
+            tapState = SecretDateUnlockEvaluator.reset()
+            repository.setupInitialPinAndSecretDate(
+                pin = candidate,
+                day = todayDay,
+                month = todayMonth,
+                year = todayYear
+            )
+            onSecretUnlocked()
+            return
+        }
+
         pinInput = ""
+        confirmPinInput = ""
+        setupError = null
         showPinDialog = false
         tapState = SecretDateUnlockEvaluator.reset()
         if (candidate.length !in 4..8) return
 
-        when (repository.verifySecretDatePin(candidate)) {
-            SecretPinVerifyResult.Success -> onSecretUnlocked()
-            is SecretPinVerifyResult.Incorrect,
-            is SecretPinVerifyResult.RateLimited -> {
-                // Dismissed cleanly; remain on Calendar without revealing secret state
+        if (repository.hasSecretDatePinConfigured()) {
+            when (repository.verifySecretDatePin(candidate)) {
+                SecretPinVerifyResult.Success -> onSecretUnlocked()
+                is SecretPinVerifyResult.Incorrect,
+                is SecretPinVerifyResult.RateLimited -> {
+                    // Dismissed cleanly; remain on Calendar without revealing secret state
+                }
             }
+        } else if (repository.verifyPin(candidate)) {
+            onSecretUnlocked()
         }
     }
 
@@ -370,7 +407,8 @@ fun CalendarLaunchScreen(
                                                         day = cell.day,
                                                         month = displayedMonth,
                                                         year = displayedYear,
-                                                        nowMillis = System.currentTimeMillis()
+                                                        nowMillis = System.currentTimeMillis(),
+                                                        fallbackToday = Triple(todayDay, todayMonth, todayYear)
                                                     )
                                                     when (outcome) {
                                                         is SecretTapOutcome.Counting -> {
@@ -379,6 +417,8 @@ fun CalendarLaunchScreen(
                                                         is SecretTapOutcome.TriggerPinPrompt -> {
                                                             tapState = outcome.resetState
                                                             pinInput = ""
+                                                            confirmPinInput = ""
+                                                            setupError = null
                                                             showPinDialog = true
                                                         }
                                                     }
@@ -464,51 +504,94 @@ fun CalendarLaunchScreen(
         }
 
         if (showPinDialog) {
+            val isFirstTimeSetup = !repository.hasPinConfigured() && !repository.hasSecretDatePinConfigured()
+            val pinFieldLabel: (@Composable () -> Unit)? = if (isFirstTimeSetup) {
+                { Text("PIN (4–8 digits)") }
+            } else {
+                null
+            }
             AlertDialog(
                 onDismissRequest = {
                     pinInput = ""
+                    confirmPinInput = ""
+                    setupError = null
                     showPinDialog = false
                     tapState = SecretDateUnlockEvaluator.reset()
                 },
                 title = {
                     Text(
-                        text = "Enter PIN",
+                        text = if (isFirstTimeSetup) "Set PIN" else "Enter PIN",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold
                     )
                 },
                 text = {
-                    OutlinedTextField(
-                        value = pinInput,
-                        onValueChange = { updated ->
-                            if (updated.length <= 8 && updated.all(Char::isDigit)) {
-                                pinInput = updated
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedTextField(
+                            value = pinInput,
+                            onValueChange = { updated ->
+                                if (updated.length <= 8 && updated.all(Char::isDigit)) {
+                                    pinInput = updated
+                                    setupError = null
+                                }
+                            },
+                            label = pinFieldLabel,
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.NumberPassword,
+                                imeAction = if (isFirstTimeSetup) ImeAction.Next else ImeAction.Done
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onDone = { if (!isFirstTimeSetup) submitSecretPin() }
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        if (isFirstTimeSetup) {
+                            OutlinedTextField(
+                                value = confirmPinInput,
+                                onValueChange = { updated ->
+                                    if (updated.length <= 8 && updated.all(Char::isDigit)) {
+                                        confirmPinInput = updated
+                                        setupError = null
+                                    }
+                                },
+                                label = { Text("Confirm PIN") },
+                                singleLine = true,
+                                visualTransformation = PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.NumberPassword,
+                                    imeAction = ImeAction.Done
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onDone = { submitSecretPin() }
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            setupError?.let { msg ->
+                                Text(
+                                    text = msg,
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.labelMedium
+                                )
                             }
-                        },
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.NumberPassword,
-                            imeAction = ImeAction.Done
-                        ),
-                        keyboardActions = KeyboardActions(
-                            onDone = { submitSecretPin() }
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                        }
+                    }
                 },
                 confirmButton = {
                     Button(
                         onClick = { submitSecretPin() },
-                        enabled = pinInput.length in 4..8
+                        enabled = pinInput.length in 4..8 && (!isFirstTimeSetup || confirmPinInput.length in 4..8)
                     ) {
-                        Text("Confirm")
+                        Text(if (isFirstTimeSetup) "Save" else "Confirm")
                     }
                 },
                 dismissButton = {
                     TextButton(
                         onClick = {
                             pinInput = ""
+                            confirmPinInput = ""
+                            setupError = null
                             showPinDialog = false
                             tapState = SecretDateUnlockEvaluator.reset()
                         }

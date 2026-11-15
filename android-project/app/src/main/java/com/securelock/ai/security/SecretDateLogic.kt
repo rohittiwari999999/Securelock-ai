@@ -45,9 +45,16 @@ object SecretDateUnlockEvaluator {
         hasSecretPin: Boolean,
         day: Int,
         month: Int,
-        year: Int
+        year: Int,
+        fallbackToday: Triple<Int, Int, Int>? = null
     ): Boolean {
-        if (!config.enabled || !hasSecretPin) return false
+        if (!config.enabled) return false
+        if (!hasSecretPin) {
+            return fallbackToday != null &&
+                fallbackToday.first == day &&
+                fallbackToday.second == month &&
+                fallbackToday.third == year
+        }
         if (day != config.day || month != config.month) return false
         return config.year == null || config.year == year
     }
@@ -59,7 +66,8 @@ object SecretDateUnlockEvaluator {
         day: Int,
         month: Int,
         year: Int,
-        nowMillis: Long
+        nowMillis: Long,
+        fallbackToday: Triple<Int, Int, Int>? = null
     ): SecretTapOutcome {
         val isSameDate = currentState.lastTappedDay == day &&
             currentState.lastTappedMonth == month &&
@@ -74,7 +82,7 @@ object SecretDateUnlockEvaluator {
         }
 
         if (nextCount >= REQUIRED_TAPS &&
-            matchesSecretDate(config, hasSecretPin, day, month, year)
+            matchesSecretDate(config, hasSecretPin, day, month, year, fallbackToday)
         ) {
             return SecretTapOutcome.TriggerPinPrompt(SecretTapState())
         }
