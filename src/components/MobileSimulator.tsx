@@ -1,10 +1,13 @@
-import { ChangeEvent, useMemo, useRef, useState } from 'react';
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
   BarChart3,
+  Calendar,
   Camera,
   Check,
+  ChevronLeft,
+  ChevronRight,
   CloudOff,
   Delete,
   Download,
@@ -264,6 +267,95 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
   const [intruderThreshold, setIntruderThreshold] = useState(3);
   const [lockNotificationsEnabled, setLockNotificationsEnabled] = useState(true);
   const [recoveryCode, setRecoveryCode] = useState('7K4M-9P2X-Q8WN');
+
+  // Calendar Launch Disguise & Secret Date State (persisted once after initial setup)
+  const initialToday = useMemo(() => new Date(), []);
+  const savedSimSetup = useMemo(() => {
+    try {
+      const raw = window.localStorage.getItem('securelock_sim_calendar_setup_v2');
+      return raw ? (JSON.parse(raw) as {
+        done: boolean;
+        secretDay: number;
+        secretMonth: number;
+        secretYear: string;
+        secretPin: string;
+        hasPinSecret?: boolean;
+        masterPin: string;
+        lockMethod: SimLockMethod;
+        pattern: number[];
+        password: string;
+        biometric: boolean;
+      }) : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const [simAppLockConfigured, setSimAppLockConfigured] = useState<boolean>(savedSimSetup?.done ?? false);
+  const [simHasPinSecret, setSimHasPinSecret] = useState<boolean>(savedSimSetup?.hasPinSecret ?? true);
+  const [pendingChosenDate, setPendingChosenDate] = useState<{ day: number; month: number; year: number } | null>(null);
+
+  const [appLockSetupMethod, setAppLockSetupMethod] = useState<SimLockMethod>('PIN_4');
+  const [setupAppPinInput, setSetupAppPinInput] = useState<string>('');
+  const [setupAppPinConfirm, setSetupAppPinConfirm] = useState<string>('');
+  const [setupFirstPattern, setSetupFirstPattern] = useState<number[] | null>(null);
+  const [setupConfirmedPattern, setSetupConfirmedPattern] = useState<number[] | null>(null);
+  const [setupPatternDraft, setSetupPatternDraft] = useState<number[]>([]);
+  const [setupPatternHint, setSetupPatternHint] = useState<string>('Tap dots to draw pattern (4+ nodes)');
+  const [setupPassInput, setSetupPassInput] = useState<string>('');
+  const [setupPassConfirm, setSetupPassConfirm] = useState<string>('');
+  const [setupBioDraft, setSetupBioDraft] = useState<boolean>(true);
+  const [appLockModalError, setAppLockModalError] = useState<string | null>(null);
+
+  const [secretDateEnabled, setSecretDateEnabled] = useState(true);
+  const [secretDay, setSecretDay] = useState(savedSimSetup?.secretDay ?? initialToday.getDate());
+  const [secretMonth, setSecretMonth] = useState(savedSimSetup?.secretMonth ?? initialToday.getMonth() + 1);
+  const [secretYear, setSecretYear] = useState<string>(savedSimSetup?.secretYear ?? '');
+  const [secretPin, setSecretPin] = useState(savedSimSetup?.secretPin ?? '2580');
+
+  useEffect(() => {
+    if (savedSimSetup?.done) {
+      setMasterPin(savedSimSetup.masterPin);
+      setDefaultLockMethod(savedSimSetup.lockMethod);
+      setUnlockMethod(savedSimSetup.lockMethod);
+      setSavedPattern(savedSimSetup.pattern);
+      setMasterPassword(savedSimSetup.password);
+      setBiometricEnabled(savedSimSetup.biometric);
+    }
+  }, [savedSimSetup]);
+
+  const [calYear, setCalYear] = useState(initialToday.getFullYear());
+  const [calMonth, setCalMonth] = useState(initialToday.getMonth() + 1);
+  const [calSelectedDay, setCalSelectedDay] = useState(initialToday.getDate());
+  const [calTapState, setCalTapState] = useState({
+    day: 0,
+    month: 0,
+    year: 0,
+    count: 0,
+    lastTapAt: 0,
+  });
+  const [calPinDialogOpen, setCalPinDialogOpen] = useState(false);
+  const [calPinInput, setCalPinInput] = useState('');
+  const [calPatternDraft, setCalPatternDraft] = useState<number[]>([]);
+  const [calPasswordInput, setCalPasswordInput] = useState('');
+
+  useEffect(() => {
+    if (calTapState.count === 0) return;
+    const timer = window.setTimeout(() => {
+      setCalTapState({ day: 0, month: 0, year: 0, count: 0, lastTapAt: 0 });
+    }, 4050);
+    return () => window.clearTimeout(timer);
+  }, [calTapState.count, calTapState.lastTapAt]);
+
+  useEffect(() => {
+    if (activeScreen !== 'calendar') {
+      setCalTapState({ day: 0, month: 0, year: 0, count: 0, lastTapAt: 0 });
+      setCalPinDialogOpen(false);
+      setCalPinInput('');
+      setCalPatternDraft([]);
+      setCalPasswordInput('');
+    }
+  }, [activeScreen]);
 
   // 8-Theme Engine State
   const [themeId, setThemeId] = useState<SimThemeId>('Midnight Blue');
@@ -754,6 +846,125 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
     setUrlInput(resolved);
   };
 
+  const calMonthCells = useMemo(() => {
+    const first = new Date(calYear, calMonth - 1, 1);
+    const startOffset = first.getDay();
+    const daysInMonth = new Date(calYear, calMonth, 0).getDate();
+    const prevMonthDays = new Date(calYear, calMonth - 1, 0).getDate();
+    const cells: Array<{ day: number; inMonth: boolean }> = [];
+    for (let i = startOffset - 1; i >= 0; i--) {
+      cells.push({ day: prevMonthDays - i, inMonth: false });
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+      cells.push({ day: d, inMonth: true });
+    }
+    let nextD = 1;
+    while (cells.length < 42) {
+      cells.push({ day: nextD++, inMonth: false });
+    }
+    return cells;
+  }, [calYear, calMonth]);
+
+  const changeCalMonth = (delta: number) => {
+    const next = new Date(calYear, calMonth - 1 + delta, 1);
+    setCalYear(next.getFullYear());
+    setCalMonth(next.getMonth() + 1);
+    const maxDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+    setCalSelectedDay((prev) => Math.min(prev, maxDay));
+    setCalTapState({ day: 0, month: 0, year: 0, count: 0, lastTapAt: 0 });
+  };
+
+  const handleCalDateTap = (day: number) => {
+    setCalSelectedDay(day);
+    const now = Date.now();
+    const sameCell =
+      calTapState.day === day &&
+      calTapState.month === calMonth &&
+      calTapState.year === calYear &&
+      now - calTapState.lastTapAt <= 4000;
+    const nextCount = sameCell ? calTapState.count + 1 : 1;
+
+    if (!simAppLockConfigured) {
+      if (nextCount >= 5) {
+        setCalTapState({ day: 0, month: 0, year: 0, count: 0, lastTapAt: 0 });
+        setSetupAppPinInput('');
+        setSetupAppPinConfirm('');
+        setSetupFirstPattern(null);
+        setSetupConfirmedPattern(null);
+        setSetupPatternDraft([]);
+        setSetupPatternHint('Tap dots to draw pattern (4+ nodes)');
+        setSetupPassInput('');
+        setSetupPassConfirm('');
+        setAppLockModalError(null);
+        setPendingChosenDate({ day, month: calMonth, year: calYear });
+        return;
+      }
+      setCalTapState({
+        day,
+        month: calMonth,
+        year: calYear,
+        count: nextCount,
+        lastTapAt: now,
+      });
+      return;
+    }
+
+    const yearMatches = secretYear.trim() === '' || Number(secretYear.trim()) === calYear;
+    const matchesConfigured =
+      secretDateEnabled && day === secretDay && calMonth === secretMonth && yearMatches;
+
+    if (nextCount >= 5 && matchesConfigured) {
+      setCalTapState({ day: 0, month: 0, year: 0, count: 0, lastTapAt: 0 });
+      setCalPinInput('');
+      setCalPatternDraft([]);
+      setCalPasswordInput('');
+      setCalPinDialogOpen(true);
+      return;
+    }
+
+    setCalTapState({
+      day,
+      month: calMonth,
+      year: calYear,
+      count: nextCount,
+      lastTapAt: now,
+    });
+  };
+
+  const submitCalSecretPin = () => {
+    const candidate = calPinInput;
+    setCalPinInput('');
+    setCalPinDialogOpen(false);
+    setCalTapState({ day: 0, month: 0, year: 0, count: 0, lastTapAt: 0 });
+    if (candidate === secretPin) {
+      onScreenChange('dashboard');
+    }
+  };
+
+  const submitCalSecretPassword = () => {
+    const candidate = calPasswordInput;
+    setCalPasswordInput('');
+    setCalPinDialogOpen(false);
+    setCalTapState({ day: 0, month: 0, year: 0, count: 0, lastTapAt: 0 });
+    if (candidate === masterPassword) {
+      onScreenChange('dashboard');
+    }
+  };
+
+  const submitCalSecretPattern = () => {
+    const candidate = calPatternDraft;
+    setCalPatternDraft([]);
+    setCalPinDialogOpen(false);
+    setCalTapState({ day: 0, month: 0, year: 0, count: 0, lastTapAt: 0 });
+    if (
+      candidate.length >= 4 &&
+      candidate.length === savedPattern.length &&
+      candidate.every((v, i) => v === savedPattern[i])
+    ) {
+      onScreenChange('dashboard');
+    }
+  };
+
   return (
     <div className="w-full max-w-[390px] mx-auto bg-[#070F1D] rounded-[42px] p-3 shadow-2xl border border-slate-800">
       <div
@@ -779,6 +990,522 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
         <div className="flex-1 overflow-y-auto">
           {showingCoverPreview ? (
             renderCoverScreen(launchedTargetApp ?? 'WhatsApp', true)
+          ) : activeScreen === 'calendar' ? (
+            <div className="min-h-full bg-[#F8FAFD] text-[#1F1F1F] p-4 flex flex-col gap-3.5 relative">
+              {/* Standalone Calendar Top Bar (zero AppLock branding) */}
+              <div className="flex items-center justify-between px-1 pt-1">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-[#1A73E8]" />
+                  <span className="text-lg font-semibold tracking-tight">Calendar</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCalYear(initialToday.getFullYear());
+                    setCalMonth(initialToday.getMonth() + 1);
+                    setCalSelectedDay(initialToday.getDate());
+                    setCalTapState({ day: 0, month: 0, year: 0, count: 0, lastTapAt: 0 });
+                  }}
+                  className="text-xs font-semibold text-[#1A73E8] px-2.5 py-1 rounded-lg hover:bg-blue-50"
+                >
+                  Today
+                </button>
+              </div>
+
+              {/* Visual First-Time Instruction Banner (only before AppLock setup is completed) */}
+              {!simAppLockConfigured && (
+                <div className="bg-[#D2E3FC] text-[#041E49] rounded-2xl p-3.5 space-y-2 border border-[#1A73E8]/20">
+                  <div className="text-xs font-bold">Step 1: Select Secret Date</div>
+                  <p className="text-[11px] leading-relaxed">
+                    Choose any date on the calendar below and tap it 5 times to continue to AppLock setup.
+                  </p>
+                  <div className="flex items-center justify-between pt-0.5">
+                    <div className="flex items-center gap-1.5">
+                      {[0, 1, 2, 3, 4].map((dot) => (
+                        <span
+                          key={dot}
+                          className={`w-2.5 h-2.5 rounded-full transition-colors ${
+                            dot < calTapState.count ? 'bg-[#1A73E8]' : 'bg-[#041E49]/20'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-[11px] font-semibold tabular-nums">
+                      {calTapState.count} / 5 taps
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Monthly Grid Card */}
+              <div className="bg-white rounded-3xl p-4 shadow-sm border border-slate-200/70 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-base font-bold text-[#1F1F1F]">
+                    {new Date(calYear, calMonth - 1, 1).toLocaleDateString('en-US', {
+                      month: 'long',
+                      year: 'numeric',
+                    })}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => changeCalMonth(-1)}
+                      className="p-1.5 rounded-full hover:bg-slate-100 text-slate-700"
+                      aria-label="Previous month"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => changeCalMonth(1)}
+                      className="p-1.5 rounded-full hover:bg-slate-100 text-slate-700"
+                      aria-label="Next month"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-7 text-center text-[11px] font-semibold">
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((wd, idx) => (
+                    <div
+                      key={wd}
+                      className={idx === 0 ? 'text-[#1A73E8] py-1' : 'text-[#5F6368] py-1'}
+                    >
+                      {wd}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-7 gap-y-1 text-center">
+                  {calMonthCells.map((cell, idx) => {
+                    const isToday =
+                      cell.inMonth &&
+                      cell.day === initialToday.getDate() &&
+                      calMonth === initialToday.getMonth() + 1 &&
+                      calYear === initialToday.getFullYear();
+                    const isSelected = cell.inMonth && cell.day === calSelectedDay;
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        disabled={!cell.inMonth}
+                        onClick={() => cell.inMonth && handleCalDateTap(cell.day)}
+                        className={`aspect-square mx-auto w-9 h-9 rounded-full flex items-center justify-center text-xs transition-colors ${
+                          !cell.inMonth
+                            ? 'text-slate-300 cursor-default'
+                            : isToday
+                              ? 'bg-[#1A73E8] text-white font-bold'
+                              : isSelected
+                                ? 'bg-[#D2E3FC] text-[#041E49] font-bold'
+                                : 'text-[#1F1F1F] hover:bg-slate-100 font-medium'
+                        }`}
+                      >
+                        {cell.day}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Standalone Day Agenda Summary */}
+              <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/70 space-y-2">
+                <div className="text-sm font-bold text-[#1F1F1F]">
+                  {new Date(calYear, calMonth - 1, calSelectedDay).toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    month: 'long',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })}
+                </div>
+                <div className="flex gap-2 text-[11px] text-[#5F6368]">
+                  <span className="px-2.5 py-1 rounded-lg bg-[#EFF3F8]">
+                    Week{' '}
+                    {Math.ceil(
+                      ((new Date(calYear, calMonth - 1, calSelectedDay).getTime() -
+                        new Date(calYear, 0, 1).getTime()) /
+                        86400000 +
+                        new Date(calYear, 0, 1).getDay() +
+                        1) /
+                        7
+                    )}
+                  </span>
+                  <span className="px-2.5 py-1 rounded-lg bg-[#EFF3F8]">No upcoming reminders</span>
+                </div>
+                <p className="text-xs text-[#5F6368] pt-1">No events scheduled for this day</p>
+              </div>
+
+              {/* Step 2: Direct AppLock Setup Window (opens immediately after 5 taps on chosen date; no Calendar Lock popup) */}
+              {pendingChosenDate && !simAppLockConfigured && (
+                <div className="absolute inset-0 bg-black/50 flex items-center justify-center p-4 z-30">
+                  <div className="bg-white rounded-3xl p-5 w-full max-w-[310px] shadow-2xl space-y-3 text-[#1F1F1F] max-h-[610px] overflow-y-auto">
+                    <div className="text-base font-bold">Step 2: AppLock Setup</div>
+                    <p className="text-[11px] text-[#5F6368]">
+                      Choose how you want to lock and unlock your apps:
+                    </p>
+                    <div className="flex gap-1.5">
+                      {(
+                        [
+                          ['PIN_4', 'PIN'],
+                          ['PATTERN', 'Pattern'],
+                          ['PASSWORD', 'Password'],
+                        ] as Array<[SimLockMethod, string]>
+                      ).map(([m, label]) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => {
+                            setAppLockSetupMethod(m);
+                            setAppLockModalError(null);
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
+                            appLockSetupMethod === m
+                              ? 'bg-[#1A73E8] text-white'
+                              : 'bg-slate-100 text-[#1F1F1F]'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {appLockSetupMethod === 'PATTERN' ? (
+                      <div className="space-y-2">
+                        <div className="text-[11px] font-medium text-[#1A73E8]">{setupPatternHint}</div>
+                        <div className="grid grid-cols-3 gap-2 max-w-[165px] mx-auto bg-slate-100 p-3 rounded-2xl">
+                          {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => {
+                            const idx = setupPatternDraft.indexOf(n);
+                            return (
+                              <button
+                                key={n}
+                                type="button"
+                                onClick={() =>
+                                  !setupPatternDraft.includes(n) &&
+                                  setSetupPatternDraft([...setupPatternDraft, n])
+                                }
+                                className={`h-9 rounded-full text-xs font-bold ${
+                                  idx >= 0
+                                    ? 'bg-[#1A73E8] text-white'
+                                    : 'bg-white text-slate-700 border border-slate-300'
+                                }`}
+                              >
+                                {idx >= 0 ? idx + 1 : n + 1}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="flex justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSetupPatternDraft([])}
+                            className="px-2.5 py-1 rounded-lg bg-slate-100 text-[11px]"
+                          >
+                            Clear
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (setupPatternDraft.length < 4) {
+                                setSetupPatternHint('Connect at least 4 nodes');
+                                return;
+                              }
+                              if (!setupFirstPattern) {
+                                setSetupFirstPattern(setupPatternDraft);
+                                setSetupPatternDraft([]);
+                                setSetupPatternHint('Tap same pattern again to confirm');
+                              } else if (
+                                setupFirstPattern.length === setupPatternDraft.length &&
+                                setupFirstPattern.every((v, i) => v === setupPatternDraft[i])
+                              ) {
+                                setSetupConfirmedPattern(setupPatternDraft);
+                                setSetupPatternDraft([]);
+                                setSetupPatternHint('Pattern confirmed!');
+                              } else {
+                                setSetupFirstPattern(null);
+                                setSetupConfirmedPattern(null);
+                                setSetupPatternDraft([]);
+                                setSetupPatternHint('Did not match. Draw again.');
+                              }
+                            }}
+                            className="px-3 py-1 rounded-lg bg-[#1A73E8] text-white text-[11px] font-semibold"
+                          >
+                            {setupFirstPattern ? 'Confirm Pattern' : 'Set First Pattern'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : appLockSetupMethod === 'PASSWORD' ? (
+                      <div className="space-y-2">
+                        <input
+                          type="password"
+                          value={setupPassInput}
+                          onChange={(e) => {
+                            setSetupPassInput(e.target.value);
+                            setAppLockModalError(null);
+                          }}
+                          placeholder="AppLock Password (6+ chars)"
+                          className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white"
+                        />
+                        <input
+                          type="password"
+                          value={setupPassConfirm}
+                          onChange={(e) => {
+                            setSetupPassConfirm(e.target.value);
+                            setAppLockModalError(null);
+                          }}
+                          placeholder="Confirm Password"
+                          className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white"
+                        />
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <input
+                          type="password"
+                          maxLength={12}
+                          value={setupAppPinInput}
+                          onChange={(e) => {
+                            setSetupAppPinInput(e.target.value.replace(/\D/g, ''));
+                            setAppLockModalError(null);
+                          }}
+                          placeholder="AppLock PIN (4–12 digits)"
+                          className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white"
+                        />
+                        <input
+                          type="password"
+                          maxLength={12}
+                          value={setupAppPinConfirm}
+                          onChange={(e) => {
+                            setSetupAppPinConfirm(e.target.value.replace(/\D/g, ''));
+                            setAppLockModalError(null);
+                          }}
+                          placeholder="Confirm AppLock PIN"
+                          className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white"
+                        />
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between pt-1">
+                      <div className="flex items-center gap-2">
+                        <Fingerprint className="w-4 h-4 text-[#1A73E8]" />
+                        <span className="text-xs font-medium">Fingerprint Unlock</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSetupBioDraft(!setupBioDraft)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold ${
+                          setupBioDraft ? 'bg-[#1A73E8] text-white' : 'bg-slate-200 text-slate-700'
+                        }`}
+                      >
+                        {setupBioDraft ? 'On' : 'Off'}
+                      </button>
+                    </div>
+
+                    {appLockModalError && (
+                      <div className="text-[11px] font-medium text-rose-600">{appLockModalError}</div>
+                    )}
+
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setPendingChosenDate(null)}
+                        className="px-3 py-2 rounded-xl text-xs font-medium text-[#5F6368] hover:bg-slate-100"
+                      >
+                        Change Date
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          let nextMasterPin = masterPin;
+                          let nextPattern = savedPattern;
+                          let nextPassword = masterPassword;
+                          let nextMethod: SimLockMethod = appLockSetupMethod;
+                          let nextSecretPin = secretPin;
+                          let nextHasPinSecret = simHasPinSecret;
+
+                          if (appLockSetupMethod === 'PATTERN') {
+                            if (!setupConfirmedPattern || setupConfirmedPattern.length < 4) {
+                              setAppLockModalError('Confirm your pattern twice first');
+                              return;
+                            }
+                            nextPattern = setupConfirmedPattern;
+                            nextHasPinSecret = false;
+                            setSavedPattern(nextPattern);
+                            setDefaultLockMethod('PATTERN');
+                            setUnlockMethod('PATTERN');
+                          } else if (appLockSetupMethod === 'PASSWORD') {
+                            if (setupPassInput.length < 6) {
+                              setAppLockModalError('Password must be 6+ characters');
+                              return;
+                            }
+                            if (setupPassInput !== setupPassConfirm) {
+                              setAppLockModalError('Passwords do not match');
+                              return;
+                            }
+                            nextPassword = setupPassInput;
+                            nextHasPinSecret = false;
+                            setMasterPassword(nextPassword);
+                            setDefaultLockMethod('PASSWORD');
+                            setUnlockMethod('PASSWORD');
+                          } else {
+                            if (setupAppPinInput.length < 4 || setupAppPinInput.length > 12) {
+                              setAppLockModalError('AppLock PIN must be 4–12 digits');
+                              return;
+                            }
+                            if (setupAppPinInput !== setupAppPinConfirm) {
+                              setAppLockModalError('AppLock PINs do not match');
+                              return;
+                            }
+                            nextMasterPin = setupAppPinInput;
+                            nextSecretPin = setupAppPinInput;
+                            nextHasPinSecret = true;
+                            nextMethod =
+                              setupAppPinInput.length === 6
+                                ? 'PIN_6'
+                                : setupAppPinInput.length === 4
+                                  ? 'PIN_4'
+                                  : 'PIN_CUSTOM';
+                            setMasterPin(nextMasterPin);
+                            setSecretPin(nextSecretPin);
+                            setDefaultLockMethod(nextMethod);
+                            setUnlockMethod(nextMethod);
+                          }
+
+                          setSecretDay(pendingChosenDate.day);
+                          setSecretMonth(pendingChosenDate.month);
+                          setSecretYear('');
+                          setSecretDateEnabled(true);
+                          setSimHasPinSecret(nextHasPinSecret);
+                          setBiometricEnabled(setupBioDraft);
+                          setSimAppLockConfigured(true);
+                          setPendingChosenDate(null);
+                          setAppLockModalError(null);
+                          try {
+                            window.localStorage.setItem(
+                              'securelock_sim_calendar_setup_v2',
+                              JSON.stringify({
+                                done: true,
+                                secretDay: pendingChosenDate.day,
+                                secretMonth: pendingChosenDate.month,
+                                secretYear: '',
+                                secretPin: nextSecretPin,
+                                hasPinSecret: nextHasPinSecret,
+                                masterPin: nextMasterPin,
+                                lockMethod: nextMethod,
+                                pattern: nextPattern,
+                                password: nextPassword,
+                                biometric: setupBioDraft,
+                              })
+                            );
+                          } catch {
+                            // ignore storage errors
+                          }
+                        }}
+                        className="flex-1 py-2 rounded-xl text-xs font-semibold bg-[#1A73E8] text-white"
+                      >
+                        Save &amp; Finish
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Discreet Credential Dialog on 5th tap */}
+              {calPinDialogOpen && (
+                <div className="absolute inset-0 bg-black/45 flex items-center justify-center p-5 z-20">
+                  <div className="bg-white rounded-3xl p-5 w-full max-w-[290px] shadow-2xl space-y-3 text-[#1F1F1F]">
+                    <div className="text-base font-semibold">
+                      {!simHasPinSecret && defaultLockMethod === 'PATTERN'
+                        ? 'Draw Pattern'
+                        : !simHasPinSecret && defaultLockMethod === 'PASSWORD'
+                          ? 'Enter Password'
+                          : 'Enter PIN'}
+                    </div>
+                    {!simHasPinSecret && defaultLockMethod === 'PATTERN' ? (
+                      <div className="grid grid-cols-3 gap-2 max-w-[165px] mx-auto bg-slate-100 p-3 rounded-2xl">
+                        {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => {
+                          const idx = calPatternDraft.indexOf(n);
+                          return (
+                            <button
+                              key={n}
+                              type="button"
+                              onClick={() =>
+                                !calPatternDraft.includes(n) &&
+                                setCalPatternDraft([...calPatternDraft, n])
+                              }
+                              className={`h-9 rounded-full text-xs font-bold ${
+                                idx >= 0
+                                  ? 'bg-[#1A73E8] text-white'
+                                  : 'bg-white text-slate-700 border border-slate-300'
+                              }`}
+                            >
+                              {idx >= 0 ? idx + 1 : n + 1}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : !simHasPinSecret && defaultLockMethod === 'PASSWORD' ? (
+                      <input
+                        type="password"
+                        autoFocus
+                        value={calPasswordInput}
+                        onChange={(e) => setCalPasswordInput(e.target.value)}
+                        onKeyDown={(e) =>
+                          e.key === 'Enter' && calPasswordInput.length > 0 && submitCalSecretPassword()
+                        }
+                        className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm text-[#1F1F1F] bg-white focus:outline-none focus:border-[#1A73E8]"
+                      />
+                    ) : (
+                      <input
+                        type="password"
+                        maxLength={12}
+                        autoFocus
+                        value={calPinInput}
+                        onChange={(e) => setCalPinInput(e.target.value.replace(/\D/g, ''))}
+                        onKeyDown={(e) =>
+                          e.key === 'Enter' && calPinInput.length >= 4 && submitCalSecretPin()
+                        }
+                        className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm text-[#1F1F1F] bg-white focus:outline-none focus:border-[#1A73E8]"
+                      />
+                    )}
+                    <div className="flex justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCalPinInput('');
+                          setCalPatternDraft([]);
+                          setCalPasswordInput('');
+                          setCalPinDialogOpen(false);
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-[#5F6368] hover:bg-slate-100"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        disabled={
+                          !simHasPinSecret && defaultLockMethod === 'PATTERN'
+                            ? calPatternDraft.length < 4
+                            : !simHasPinSecret && defaultLockMethod === 'PASSWORD'
+                              ? calPasswordInput.length === 0
+                              : calPinInput.length < 4
+                        }
+                        onClick={() => {
+                          if (!simHasPinSecret && defaultLockMethod === 'PATTERN') {
+                            submitCalSecretPattern();
+                          } else if (!simHasPinSecret && defaultLockMethod === 'PASSWORD') {
+                            submitCalSecretPassword();
+                          } else {
+                            submitCalSecretPin();
+                          }
+                        }}
+                        className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-[#1A73E8] text-white disabled:opacity-40"
+                      >
+                        Confirm
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           ) : activeScreen === 'unlock' ? (
             <div className="p-5 flex flex-col justify-between min-h-full">
               <div className="text-center">
@@ -1063,7 +1790,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                 </div>
                 <button
                   type="button"
-                  onClick={() => onScreenChange('unlock')}
+                  onClick={() => onScreenChange(secretDateEnabled ? 'calendar' : 'unlock')}
                   className="text-xs font-semibold"
                   style={{ color: activeTheme.secondary }}
                 >
@@ -1127,7 +1854,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                 </div>
                 <button
                   type="button"
-                  onClick={() => onScreenChange('unlock')}
+                  onClick={() => onScreenChange(secretDateEnabled ? 'calendar' : 'unlock')}
                   className="text-[11px] font-medium"
                   style={{ color: activeTheme.secondary }}
                 >
@@ -2469,6 +3196,107 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                       className={`${cardClasses} p-3.5 space-y-2`}
                       style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
                     >
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs font-bold">Secret Date Unlock (Calendar Stealth)</div>
+                        <button
+                          type="button"
+                          onClick={() => setSecretDateEnabled(!secretDateEnabled)}
+                          className="px-2.5 py-1 rounded-lg text-[11px] font-semibold"
+                          style={
+                            secretDateEnabled
+                              ? { backgroundColor: activeTheme.accent, color: '#FFFFFF' }
+                              : { backgroundColor: '#CBD5E1', color: '#0A1628' }
+                          }
+                        >
+                          {secretDateEnabled ? 'On' : 'Off'}
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <select
+                          value={secretMonth}
+                          onChange={(e) => setSecretMonth(Number(e.target.value))}
+                          className="px-2 py-1.5 rounded-lg border border-slate-300 text-[11px] text-[#0A1628] bg-white"
+                        >
+                          {[
+                            'Jan',
+                            'Feb',
+                            'Mar',
+                            'Apr',
+                            'May',
+                            'Jun',
+                            'Jul',
+                            'Aug',
+                            'Sep',
+                            'Oct',
+                            'Nov',
+                            'Dec',
+                          ].map((m, idx) => (
+                            <option key={m} value={idx + 1}>
+                              {m}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="number"
+                          min={1}
+                          max={31}
+                          value={secretDay}
+                          onChange={(e) =>
+                            setSecretDay(Math.max(1, Math.min(31, Number(e.target.value) || 1)))
+                          }
+                          placeholder="Day"
+                          className="px-2 py-1.5 rounded-lg border border-slate-300 text-[11px] text-[#0A1628] bg-white"
+                        />
+                        <input
+                          type="text"
+                          maxLength={4}
+                          value={secretYear}
+                          onChange={(e) => setSecretYear(e.target.value.replace(/\D/g, ''))}
+                          placeholder="Year (opt)"
+                          className="px-2 py-1.5 rounded-lg border border-slate-300 text-[11px] text-[#0A1628] bg-white"
+                        />
+                      </div>
+                      <input
+                        type="password"
+                        maxLength={8}
+                        value={secretPin}
+                        onChange={(e) => {
+                          const v = e.target.value.replace(/\D/g, '');
+                          if (v.length >= 4 || v.length > 0) setSecretPin(v);
+                        }}
+                        placeholder="Secret PIN (4–8 digits)"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs text-[#0A1628] bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          try {
+                            window.localStorage.removeItem('securelock_sim_calendar_setup_v2');
+                          } catch {
+                            // ignore
+                          }
+                          setSetupAppPinInput('');
+                          setSetupAppPinConfirm('');
+                          setSetupFirstPattern(null);
+                          setSetupConfirmedPattern(null);
+                          setSetupPatternDraft([]);
+                          setSetupPassInput('');
+                          setSetupPassConfirm('');
+                          setPendingChosenDate(null);
+                          setSimHasPinSecret(true);
+                          setSimAppLockConfigured(false);
+                          onScreenChange('calendar');
+                        }}
+                        className="w-full py-1.5 rounded-lg bg-slate-200 text-[#0A1628] text-[11px] font-medium"
+                      >
+                        Replay One-Time Startup Setup
+                      </button>
+                    </div>
+
+                    <div
+                      className={`${cardClasses} p-3.5 space-y-2`}
+                      style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                    >
                       <div className="text-xs font-bold">Emergency Recovery &amp; Theme Studio</div>
                       <div className="text-[11px] font-mono bg-slate-200/70 text-[#0A1628] px-2.5 py-1.5 rounded-lg">
                         {recoveryCode}
@@ -2544,7 +3372,13 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
         <div className="py-2.5 flex justify-center shrink-0">
           <button
             type="button"
-            onClick={() => onScreenChange('dashboard')}
+            onClick={() =>
+              onScreenChange(
+                activeScreen === 'calendar' || activeScreen === 'unlock'
+                  ? activeScreen
+                  : 'dashboard'
+              )
+            }
             className="w-28 h-1 rounded-full bg-white/35 hover:bg-white/60 transition-colors"
             aria-label="Return to Dashboard"
           />

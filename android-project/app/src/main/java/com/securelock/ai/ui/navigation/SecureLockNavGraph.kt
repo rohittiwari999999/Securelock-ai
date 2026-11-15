@@ -56,7 +56,7 @@ fun SecureLockNavHost(
     val vaultUnlocked by AppLockSessionManager.vaultUnlockedFlow.collectAsState()
     val backStackEntry by navController.currentBackStackEntryAsState()
 
-    val needsSetup = !repository.hasPinConfigured()
+    val needsSetup = !repository.hasAppLockCredentialConfigured()
     val secretDateActive = settings.secretDateConfig.enabled
 
     val startRoute = when {
@@ -89,6 +89,7 @@ fun SecureLockNavHost(
     ) {
         composable(Routes.CALENDAR_LAUNCH) {
             CalendarLaunchScreen(
+                activity = activity,
                 repository = repository,
                 onSecretUnlocked = {
                     AppLockSessionManager.unlockVault()

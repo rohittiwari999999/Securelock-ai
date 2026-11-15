@@ -13,6 +13,7 @@ import {
 type TopSection = 'preview' | 'source' | 'permissions' | 'setup';
 
 const SIMULATOR_NAV_LIST: Array<{ id: SimulatorScreenId; label: string }> = [
+  { id: 'calendar', label: 'Calendar' },
   { id: 'unlock', label: 'Unlock Gate' },
   { id: 'dashboard', label: '9-Card Dashboard' },
   { id: 'app_lock', label: 'App Lock' },
@@ -30,7 +31,7 @@ const SIMULATOR_NAV_LIST: Array<{ id: SimulatorScreenId; label: string }> = [
 
 export default function App() {
   const [section, setSection] = useState<TopSection>('preview');
-  const [activeScreen, setActiveScreen] = useState<SimulatorScreenId>('unlock');
+  const [activeScreen, setActiveScreen] = useState<SimulatorScreenId>('calendar');
   const [inspectorSourcePath, setInspectorSourcePath] = useState<string | undefined>(undefined);
   const [copiedCode, setCopiedCode] = useState(false);
   const [downloading, setDownloading] = useState(false);

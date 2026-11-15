@@ -75,7 +75,9 @@ fun SettingsScreen(
     var showPrivacyPolicyDialog by remember { mutableStateOf(false) }
     var regeneratedRecovery by remember { mutableStateOf<String?>(null) }
     var backupStatus by remember { mutableStateOf<String?>(null) }
-    val hasSecretPin = remember(settings.secretDateConfig) { repository.hasSecretDatePinConfigured() }
+    val hasSecretPin = remember(settings.secretDateConfig) {
+        repository.hasSecretDatePinConfigured() || repository.hasAppLockCredentialConfigured()
+    }
 
     val exportBackupLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")

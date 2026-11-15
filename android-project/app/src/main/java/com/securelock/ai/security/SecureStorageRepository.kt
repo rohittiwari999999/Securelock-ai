@@ -67,6 +67,8 @@ class SecureStorageRepository(context: Context) {
     fun hasPinConfigured(): Boolean = !prefs.getString(KEY_PIN_HASH, null).isNullOrEmpty()
     fun hasPatternConfigured(): Boolean = !prefs.getString(KEY_PATTERN_HASH, null).isNullOrEmpty()
     fun hasPasswordConfigured(): Boolean = !prefs.getString(KEY_PASSWORD_HASH, null).isNullOrEmpty()
+    fun hasAppLockCredentialConfigured(): Boolean =
+        hasPinConfigured() || hasPatternConfigured() || hasPasswordConfigured()
     fun hasRecoveryCodeConfigured(): Boolean = !prefs.getString(KEY_RECOVERY_HASH, null).isNullOrEmpty()
     fun hasSecretDatePinConfigured(): Boolean = !prefs.getString(KEY_SECRET_DATE_PIN_HASH, null).isNullOrEmpty()
     fun isSecretDateUnlockActive(): Boolean = _settings.value.secretDateConfig.enabled
@@ -199,7 +201,11 @@ class SecureStorageRepository(context: Context) {
                 .remove(KEY_SECRET_DATE_RATE_STATE)
                 .apply()
         }
-        val canEnable = enabled && (hasSecretDatePinConfigured() || !newSecretPin.isNullOrEmpty())
+        val canEnable = enabled && (
+            hasSecretDatePinConfigured() ||
+                !newSecretPin.isNullOrEmpty() ||
+                hasAppLockCredentialConfigured()
+            )
         updateSettings {
             it.copy(
                 secretDateConfig = SecretDateConfig(
@@ -212,24 +218,40 @@ class SecureStorageRepository(context: Context) {
         }
     }
 
-    fun setupInitialPinAndSecretDate(pin: String, day: Int, month: Int, year: Int) {
-        if (!hasPinConfigured()) {
-            setPin(pin)
+    fun completeOneTimeCalendarSetup(
+        secretDay: Int,
+        secretMonth: Int,
+        secretYear: Int?,
+        secretPin: String,
+        appLockPin: String?
+    ) {
+        if (!appLockPin.isNullOrEmpty() && !hasPinConfigured()) {
+            setPin(appLockPin)
             if (!hasRecoveryCodeConfigured()) {
                 generateAndStoreRecoveryCode()
             }
         }
         saveSecretDateConfiguration(
-            day = day,
-            month = month,
-            year = year,
+            day = secretDay,
+            month = secretMonth,
+            year = secretYear,
             enabled = true,
-            newSecretPin = pin
+            newSecretPin = secretPin
+        )
+    }
+
+    fun setupInitialPinAndSecretDate(pin: String, day: Int, month: Int, year: Int) {
+        completeOneTimeCalendarSetup(
+            secretDay = day,
+            secretMonth = month,
+            secretYear = year,
+            secretPin = pin,
+            appLockPin = pin
         )
     }
 
     fun setSecretDateUnlockEnabled(enabled: Boolean) {
-        val canEnable = enabled && hasSecretDatePinConfigured()
+        val canEnable = enabled && (hasSecretDatePinConfigured() || hasAppLockCredentialConfigured())
         updateSettings {
             it.copy(secretDateConfig = it.secretDateConfig.copy(enabled = canEnable))
         }
@@ -238,7 +260,7 @@ class SecureStorageRepository(context: Context) {
     fun matchesSecretDate(day: Int, month: Int, year: Int): Boolean {
         return SecretDateUnlockEvaluator.matchesSecretDate(
             config = _settings.value.secretDateConfig,
-            hasSecretPin = hasSecretDatePinConfigured(),
+            hasSecretPin = hasSecretDatePinConfigured() || hasAppLockCredentialConfigured(),
             day = day,
             month = month,
             year = year

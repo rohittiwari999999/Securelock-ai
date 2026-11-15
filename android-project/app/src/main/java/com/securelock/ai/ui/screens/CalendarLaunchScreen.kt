@@ -25,6 +25,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.outlined.EventNote
 import androidx.compose.material3.AlertDialog
@@ -32,12 +33,15 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -57,20 +61,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.securelock.ai.data.LockMethod
+import com.securelock.ai.security.BiometricAuthManager
+import com.securelock.ai.security.BiometricAvailability
 import com.securelock.ai.security.SecretDateUnlockEvaluator
 import com.securelock.ai.security.SecretPinVerifyResult
 import com.securelock.ai.security.SecretTapOutcome
 import com.securelock.ai.security.SecretTapState
 import com.securelock.ai.security.SecureStorageRepository
+import com.securelock.ai.ui.components.PatternLockPad
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -113,14 +123,17 @@ private data class CalendarCell(
 
 /**
  * Genuine standalone Material 3 monthly Calendar launch screen.
- * Contains zero AppLock branding or unlock hints.
+ * Shows visual 5-tap onboarding ONLY during initial first-time setup before Secret Date & AppLock are configured.
+ * Once configured, contains zero AppLock branding or unlock hints.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CalendarLaunchScreen(
+    activity: FragmentActivity? = null,
     repository: SecureStorageRepository,
     onSecretUnlocked: () -> Unit
 ) {
+    val context = LocalContext.current
     val settings by repository.settings.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
     val isDark = isSystemInDarkTheme()
@@ -137,8 +150,11 @@ fun CalendarLaunchScreen(
     var tapState by remember { mutableStateOf(SecretTapState()) }
     var showPinDialog by remember { mutableStateOf(false) }
     var pinInput by remember { mutableStateOf("") }
-    var confirmPinInput by remember { mutableStateOf("") }
-    var setupError by remember { mutableStateOf<String?>(null) }
+    var passwordInput by remember { mutableStateOf("") }
+
+    // First-time onboarding state (disappears forever once AppLock & Secret Date are configured)
+    var appLockConfigured by remember { mutableStateOf(repository.hasAppLockCredentialConfigured()) }
+    var pendingSecretDate by remember { mutableStateOf<Triple<Int, Int, Int>?>(null) }
 
     // Reset tap counter after inactivity timeout
     LaunchedEffect(tapState.lastTapAtMillis, tapState.tapCount) {
@@ -148,14 +164,13 @@ fun CalendarLaunchScreen(
         }
     }
 
-    // Reset tap counter & clear PIN dialog whenever app goes to background
+    // Reset tap counter & clear unlocked prompt whenever app goes to background
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
                 tapState = SecretDateUnlockEvaluator.reset()
                 pinInput = ""
-                confirmPinInput = ""
-                setupError = null
+                passwordInput = ""
                 showPinDialog = false
             }
         }
@@ -187,39 +202,10 @@ fun CalendarLaunchScreen(
 
     fun submitSecretPin() {
         val candidate = pinInput
-        val confirmCandidate = confirmPinInput
-        val isFirstTimeSetup = !repository.hasPinConfigured() && !repository.hasSecretDatePinConfigured()
-
-        if (isFirstTimeSetup) {
-            if (candidate.length !in 4..8) {
-                setupError = "Enter 4–8 digits"
-                return
-            }
-            if (candidate != confirmCandidate) {
-                setupError = "PINs do not match"
-                return
-            }
-            pinInput = ""
-            confirmPinInput = ""
-            setupError = null
-            showPinDialog = false
-            tapState = SecretDateUnlockEvaluator.reset()
-            repository.setupInitialPinAndSecretDate(
-                pin = candidate,
-                day = todayDay,
-                month = todayMonth,
-                year = todayYear
-            )
-            onSecretUnlocked()
-            return
-        }
-
         pinInput = ""
-        confirmPinInput = ""
-        setupError = null
         showPinDialog = false
         tapState = SecretDateUnlockEvaluator.reset()
-        if (candidate.length !in 4..8) return
+        if (candidate.length !in 4..12) return
 
         if (repository.hasSecretDatePinConfigured()) {
             when (repository.verifySecretDatePin(candidate)) {
@@ -230,6 +216,16 @@ fun CalendarLaunchScreen(
                 }
             }
         } else if (repository.verifyPin(candidate)) {
+            onSecretUnlocked()
+        }
+    }
+
+    fun submitSecretPassword() {
+        val candidate = passwordInput
+        passwordInput = ""
+        showPinDialog = false
+        tapState = SecretDateUnlockEvaluator.reset()
+        if (candidate.isNotEmpty() && repository.verifyPassword(candidate)) {
             onSecretUnlocked()
         }
     }
@@ -305,6 +301,63 @@ fun CalendarLaunchScreen(
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                // Visual First-Time Onboarding Card (shown ONLY before initial AppLock setup is completed)
+                if (!appLockConfigured) {
+                    Card(
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Step 1: Select Secret Date",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Text(
+                                text = "Choose any date on the calendar below and tap it 5 times to continue to AppLock setup.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    repeat(SecretDateUnlockEvaluator.REQUIRED_TAPS) { idx ->
+                                        Box(
+                                            modifier = Modifier
+                                                .size(10.dp)
+                                                .clip(CircleShape)
+                                                .background(
+                                                    if (idx < tapState.tapCount) {
+                                                        MaterialTheme.colorScheme.primary
+                                                    } else {
+                                                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.25f)
+                                                    }
+                                                )
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = "${tapState.tapCount} / 5 taps",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                        }
+                    }
+                }
+
                 Card(
                     shape = RoundedCornerShape(24.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -400,26 +453,51 @@ fun CalendarLaunchScreen(
                                                     indication = null
                                                 ) {
                                                     selectedDay = cell.day
-                                                    val outcome = SecretDateUnlockEvaluator.registerDateTap(
-                                                        currentState = tapState,
-                                                        config = settings.secretDateConfig,
-                                                        hasSecretPin = repository.hasSecretDatePinConfigured(),
-                                                        day = cell.day,
-                                                        month = displayedMonth,
-                                                        year = displayedYear,
-                                                        nowMillis = System.currentTimeMillis(),
-                                                        fallbackToday = Triple(todayDay, todayMonth, todayYear)
-                                                    )
-                                                    when (outcome) {
-                                                        is SecretTapOutcome.Counting -> {
-                                                            tapState = outcome.nextState
+                                                    val nowMs = System.currentTimeMillis()
+                                                    if (!appLockConfigured) {
+                                                        val isSameDate = tapState.lastTappedDay == cell.day &&
+                                                            tapState.lastTappedMonth == displayedMonth &&
+                                                            tapState.lastTappedYear == displayedYear
+                                                        val withinTimeout = tapState.lastTapAtMillis > 0L &&
+                                                            (nowMs - tapState.lastTapAtMillis) <= SecretDateUnlockEvaluator.TAP_TIMEOUT_MILLIS
+                                                        val nextCount = if (isSameDate && withinTimeout) {
+                                                            tapState.tapCount + 1
+                                                        } else {
+                                                            1
                                                         }
-                                                        is SecretTapOutcome.TriggerPinPrompt -> {
-                                                            tapState = outcome.resetState
-                                                            pinInput = ""
-                                                            confirmPinInput = ""
-                                                            setupError = null
-                                                            showPinDialog = true
+                                                        if (nextCount >= SecretDateUnlockEvaluator.REQUIRED_TAPS) {
+                                                            tapState = SecretDateUnlockEvaluator.reset()
+                                                            pendingSecretDate = Triple(cell.day, displayedMonth, displayedYear)
+                                                        } else {
+                                                            tapState = SecretTapState(
+                                                                lastTappedDay = cell.day,
+                                                                lastTappedMonth = displayedMonth,
+                                                                lastTappedYear = displayedYear,
+                                                                tapCount = nextCount,
+                                                                lastTapAtMillis = nowMs
+                                                            )
+                                                        }
+                                                    } else {
+                                                        val outcome = SecretDateUnlockEvaluator.registerDateTap(
+                                                            currentState = tapState,
+                                                            config = settings.secretDateConfig,
+                                                            hasSecretPin = repository.hasSecretDatePinConfigured() ||
+                                                                repository.hasAppLockCredentialConfigured(),
+                                                            day = cell.day,
+                                                            month = displayedMonth,
+                                                            year = displayedYear,
+                                                            nowMillis = nowMs
+                                                        )
+                                                        when (outcome) {
+                                                            is SecretTapOutcome.Counting -> {
+                                                                tapState = outcome.nextState
+                                                            }
+                                                            is SecretTapOutcome.TriggerPinPrompt -> {
+                                                                tapState = outcome.resetState
+                                                                pinInput = ""
+                                                                passwordInput = ""
+                                                                showPinDialog = true
+                                                            }
                                                         }
                                                     }
                                                 },
@@ -503,60 +581,358 @@ fun CalendarLaunchScreen(
             }
         }
 
+        // Step 2: Direct AppLock Setup Window (opens immediately after 5 taps on chosen date; no Calendar Lock popup)
+        pendingSecretDate?.let { (chosenDay, chosenMonth, _) ->
+            val bioAvailability = remember(context) { BiometricAuthManager.checkAvailability(context) }
+            val bioAvailable = bioAvailability is BiometricAvailability.Available
+
+            var selectedMethod by remember { mutableStateOf(LockMethod.PIN_4) }
+            var pinDraft by remember { mutableStateOf("") }
+            var pinConfirmDraft by remember { mutableStateOf("") }
+            var passDraft by remember { mutableStateOf("") }
+            var passConfirmDraft by remember { mutableStateOf("") }
+            var firstPattern by remember { mutableStateOf<List<Int>?>(null) }
+            var confirmedPattern by remember { mutableStateOf<List<Int>?>(null) }
+            var patternHint by remember { mutableStateOf("Draw a pattern (4+ dots)") }
+            var biometricEnabledDraft by remember { mutableStateOf(bioAvailable) }
+            var bioVerifiedNote by remember { mutableStateOf<String?>(null) }
+            var appLockErr by remember { mutableStateOf<String?>(null) }
+
+            AlertDialog(
+                onDismissRequest = { pendingSecretDate = null },
+                title = { Text("Step 2: AppLock Setup") },
+                text = {
+                    Column(
+                        modifier = Modifier.verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "Choose how you want to lock and unlock your apps:",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FilterChip(
+                                selected = selectedMethod != LockMethod.PATTERN && selectedMethod != LockMethod.PASSWORD,
+                                onClick = { selectedMethod = LockMethod.PIN_4; appLockErr = null },
+                                label = { Text("PIN") }
+                            )
+                            FilterChip(
+                                selected = selectedMethod == LockMethod.PATTERN,
+                                onClick = { selectedMethod = LockMethod.PATTERN; appLockErr = null },
+                                label = { Text("Pattern") }
+                            )
+                            FilterChip(
+                                selected = selectedMethod == LockMethod.PASSWORD,
+                                onClick = { selectedMethod = LockMethod.PASSWORD; appLockErr = null },
+                                label = { Text("Password") }
+                            )
+                        }
+
+                        when (selectedMethod) {
+                            LockMethod.PATTERN -> {
+                                Text(
+                                    text = patternHint,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (confirmedPattern != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Box(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    PatternLockPad(
+                                        onPatternComplete = { nodes ->
+                                            appLockErr = null
+                                            if (nodes.size < 4) {
+                                                patternHint = "Connect at least 4 dots"
+                                            } else if (firstPattern == null) {
+                                                firstPattern = nodes
+                                                confirmedPattern = null
+                                                patternHint = "Draw the same pattern again to confirm"
+                                            } else if (firstPattern == nodes) {
+                                                confirmedPattern = nodes
+                                                patternHint = "Pattern confirmed!"
+                                            } else {
+                                                firstPattern = null
+                                                confirmedPattern = null
+                                                patternHint = "Patterns did not match. Draw again."
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+
+                            LockMethod.PASSWORD -> {
+                                OutlinedTextField(
+                                    value = passDraft,
+                                    onValueChange = { passDraft = it; appLockErr = null },
+                                    label = { Text("AppLock Password (6+ chars)") },
+                                    visualTransformation = PasswordVisualTransformation(),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                OutlinedTextField(
+                                    value = passConfirmDraft,
+                                    onValueChange = { passConfirmDraft = it; appLockErr = null },
+                                    label = { Text("Confirm Password") },
+                                    visualTransformation = PasswordVisualTransformation(),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+
+                            else -> {
+                                OutlinedTextField(
+                                    value = pinDraft,
+                                    onValueChange = { if (it.length <= 12 && it.all(Char::isDigit)) { pinDraft = it; appLockErr = null } },
+                                    label = { Text("AppLock PIN (4–12 digits)") },
+                                    visualTransformation = PasswordVisualTransformation(),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                OutlinedTextField(
+                                    value = pinConfirmDraft,
+                                    onValueChange = { if (it.length <= 12 && it.all(Char::isDigit)) { pinConfirmDraft = it; appLockErr = null } },
+                                    label = { Text("Confirm AppLock PIN") },
+                                    visualTransformation = PasswordVisualTransformation(),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Fingerprint / Biometric", style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    text = if (bioAvailable) "Allow fingerprint unlock for locked apps"
+                                    else (bioAvailability as? BiometricAvailability.Unavailable)?.reason
+                                        ?: "Unavailable on device",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = biometricEnabledDraft,
+                                enabled = bioAvailable,
+                                onCheckedChange = { biometricEnabledDraft = it }
+                            )
+                        }
+
+                        if (bioAvailable && activity != null) {
+                            OutlinedButton(
+                                onClick = {
+                                    BiometricAuthManager.authenticate(
+                                        activity = activity,
+                                        title = "Verify Fingerprint",
+                                        subtitle = "Confirm fingerprint for AppLock",
+                                        onSuccess = {
+                                            biometricEnabledDraft = true
+                                            bioVerifiedNote = "Fingerprint verified!"
+                                        },
+                                        onFailedAttempt = { bioVerifiedNote = "Fingerprint not recognized" },
+                                        onError = { msg -> bioVerifiedNote = msg }
+                                    )
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Fingerprint, contentDescription = null)
+                                Text("  Verify Fingerprint")
+                            }
+                        }
+
+                        bioVerifiedNote?.let { note ->
+                            Text(
+                                text = note,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        appLockErr?.let { err ->
+                            Text(
+                                text = err,
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        when (selectedMethod) {
+                            LockMethod.PATTERN -> {
+                                val pattern = confirmedPattern
+                                if (pattern == null || pattern.size < 4) {
+                                    appLockErr = "Draw and confirm your pattern twice"
+                                } else {
+                                    repository.setPattern(pattern)
+                                    repository.updateSettings {
+                                        it.copy(
+                                            preferredLockMethod = LockMethod.PATTERN,
+                                            biometricEnabled = biometricEnabledDraft
+                                        )
+                                    }
+                                    if (!repository.hasRecoveryCodeConfigured()) {
+                                        repository.generateAndStoreRecoveryCode()
+                                    }
+                                    repository.saveSecretDateConfiguration(
+                                        day = chosenDay,
+                                        month = chosenMonth,
+                                        year = null,
+                                        enabled = true,
+                                        newSecretPin = null
+                                    )
+                                    appLockConfigured = true
+                                    pendingSecretDate = null
+                                }
+                            }
+
+                            LockMethod.PASSWORD -> {
+                                if (passDraft.length < 6) {
+                                    appLockErr = "Password must be at least 6 characters"
+                                } else if (passDraft != passConfirmDraft) {
+                                    appLockErr = "Passwords do not match"
+                                } else {
+                                    repository.setPassword(passDraft)
+                                    repository.updateSettings {
+                                        it.copy(
+                                            preferredLockMethod = LockMethod.PASSWORD,
+                                            biometricEnabled = biometricEnabledDraft
+                                        )
+                                    }
+                                    if (!repository.hasRecoveryCodeConfigured()) {
+                                        repository.generateAndStoreRecoveryCode()
+                                    }
+                                    repository.saveSecretDateConfiguration(
+                                        day = chosenDay,
+                                        month = chosenMonth,
+                                        year = null,
+                                        enabled = true,
+                                        newSecretPin = null
+                                    )
+                                    appLockConfigured = true
+                                    pendingSecretDate = null
+                                }
+                            }
+
+                            else -> {
+                                if (pinDraft.length !in 4..12) {
+                                    appLockErr = "PIN must be 4–12 digits"
+                                } else if (pinDraft != pinConfirmDraft) {
+                                    appLockErr = "PINs do not match"
+                                } else {
+                                    repository.setPin(pinDraft)
+                                    repository.updateSettings {
+                                        it.copy(biometricEnabled = biometricEnabledDraft)
+                                    }
+                                    if (!repository.hasRecoveryCodeConfigured()) {
+                                        repository.generateAndStoreRecoveryCode()
+                                    }
+                                    repository.saveSecretDateConfiguration(
+                                        day = chosenDay,
+                                        month = chosenMonth,
+                                        year = null,
+                                        enabled = true,
+                                        newSecretPin = pinDraft
+                                    )
+                                    appLockConfigured = true
+                                    pendingSecretDate = null
+                                }
+                            }
+                        }
+                    }) {
+                        Text("Save & Finish")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingSecretDate = null }) {
+                        Text("Change Date")
+                    }
+                }
+            )
+        }
+
+        // Discreet Credential Dialog (Normal Mode after 5 taps on configured Secret Date)
         if (showPinDialog) {
-            val isFirstTimeSetup = !repository.hasPinConfigured() && !repository.hasSecretDatePinConfigured()
-            val pinFieldLabel: (@Composable () -> Unit)? = if (isFirstTimeSetup) {
-                { Text("PIN (4–8 digits)") }
-            } else {
-                null
-            }
+            val usePatternPrompt = !repository.hasSecretDatePinConfigured() &&
+                settings.preferredLockMethod == LockMethod.PATTERN &&
+                repository.hasPatternConfigured()
+            val usePasswordPrompt = !repository.hasSecretDatePinConfigured() &&
+                settings.preferredLockMethod == LockMethod.PASSWORD &&
+                repository.hasPasswordConfigured()
+
             AlertDialog(
                 onDismissRequest = {
                     pinInput = ""
-                    confirmPinInput = ""
-                    setupError = null
+                    passwordInput = ""
                     showPinDialog = false
                     tapState = SecretDateUnlockEvaluator.reset()
                 },
                 title = {
                     Text(
-                        text = if (isFirstTimeSetup) "Set PIN" else "Enter PIN",
+                        text = when {
+                            usePatternPrompt -> "Draw Pattern"
+                            usePasswordPrompt -> "Enter Password"
+                            else -> "Enter PIN"
+                        },
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold
                     )
                 },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlinedTextField(
-                            value = pinInput,
-                            onValueChange = { updated ->
-                                if (updated.length <= 8 && updated.all(Char::isDigit)) {
-                                    pinInput = updated
-                                    setupError = null
-                                }
-                            },
-                            label = pinFieldLabel,
-                            singleLine = true,
-                            visualTransformation = PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.NumberPassword,
-                                imeAction = if (isFirstTimeSetup) ImeAction.Next else ImeAction.Done
-                            ),
-                            keyboardActions = KeyboardActions(
-                                onDone = { if (!isFirstTimeSetup) submitSecretPin() }
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        if (isFirstTimeSetup) {
+                    when {
+                        usePatternPrompt -> {
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                PatternLockPad(
+                                    onPatternComplete = { nodes ->
+                                        showPinDialog = false
+                                        tapState = SecretDateUnlockEvaluator.reset()
+                                        if (nodes.size >= 4 && repository.verifyPattern(nodes)) {
+                                            onSecretUnlocked()
+                                        }
+                                    }
+                                )
+                            }
+                        }
+
+                        usePasswordPrompt -> {
                             OutlinedTextField(
-                                value = confirmPinInput,
+                                value = passwordInput,
+                                onValueChange = { passwordInput = it },
+                                singleLine = true,
+                                visualTransformation = PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Password,
+                                    imeAction = ImeAction.Done
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onDone = { submitSecretPassword() }
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        else -> {
+                            OutlinedTextField(
+                                value = pinInput,
                                 onValueChange = { updated ->
-                                    if (updated.length <= 8 && updated.all(Char::isDigit)) {
-                                        confirmPinInput = updated
-                                        setupError = null
+                                    if (updated.length <= 12 && updated.all(Char::isDigit)) {
+                                        pinInput = updated
                                     }
                                 },
-                                label = { Text("Confirm PIN") },
                                 singleLine = true,
                                 visualTransformation = PasswordVisualTransformation(),
                                 keyboardOptions = KeyboardOptions(
@@ -568,30 +944,26 @@ fun CalendarLaunchScreen(
                                 ),
                                 modifier = Modifier.fillMaxWidth()
                             )
-                            setupError?.let { msg ->
-                                Text(
-                                    text = msg,
-                                    color = MaterialTheme.colorScheme.error,
-                                    style = MaterialTheme.typography.labelMedium
-                                )
-                            }
                         }
                     }
                 },
                 confirmButton = {
-                    Button(
-                        onClick = { submitSecretPin() },
-                        enabled = pinInput.length in 4..8 && (!isFirstTimeSetup || confirmPinInput.length in 4..8)
-                    ) {
-                        Text(if (isFirstTimeSetup) "Save" else "Confirm")
+                    if (!usePatternPrompt) {
+                        Button(
+                            onClick = {
+                                if (usePasswordPrompt) submitSecretPassword() else submitSecretPin()
+                            },
+                            enabled = if (usePasswordPrompt) passwordInput.isNotEmpty() else pinInput.length in 4..12
+                        ) {
+                            Text("Confirm")
+                        }
                     }
                 },
                 dismissButton = {
                     TextButton(
                         onClick = {
                             pinInput = ""
-                            confirmPinInput = ""
-                            setupError = null
+                            passwordInput = ""
                             showPinDialog = false
                             tapState = SecretDateUnlockEvaluator.reset()
                         }

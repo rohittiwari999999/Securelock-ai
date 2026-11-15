@@ -194,17 +194,20 @@ fun UnlockScreen(
     val availableMethods = remember(
         isSetupFlow,
         settings.preferredLockMethod,
+        repository.hasPinConfigured(),
         repository.hasPatternConfigured(),
         repository.hasPasswordConfigured()
     ) {
         if (isSetupFlow) emptyList()
         else buildList {
-            val pinMethod = when (configuredLength) {
-                6 -> LockMethod.PIN_6
-                4 -> LockMethod.PIN_4
-                else -> LockMethod.PIN_CUSTOM
+            if (repository.hasPinConfigured()) {
+                val pinMethod = when (configuredLength) {
+                    6 -> LockMethod.PIN_6
+                    4 -> LockMethod.PIN_4
+                    else -> LockMethod.PIN_CUSTOM
+                }
+                add(pinMethod to "PIN")
             }
-            add(pinMethod to "PIN")
             if (repository.hasPatternConfigured()) add(LockMethod.PATTERN to "Pattern")
             if (repository.hasPasswordConfigured()) add(LockMethod.PASSWORD to "Password")
         }

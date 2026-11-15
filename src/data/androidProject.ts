@@ -9,6 +9,7 @@ export interface ProjectFileEntry {
 }
 
 export type SimulatorScreenId =
+  | 'calendar'
   | 'unlock'
   | 'dashboard'
   | 'app_lock'
@@ -76,6 +77,21 @@ export const ANDROID_PROJECT_FILES: ProjectFileEntry[] = Object.entries(rawModul
   .sort((a, b) => a.path.localeCompare(b.path));
 
 export const SCREEN_SPECS: Record<SimulatorScreenId, ScreenArchitectureSpec> = {
+  calendar: {
+    id: 'calendar',
+    title: 'Calendar Launch Disguise (Secret Date Unlock)',
+    kotlinPath: 'app/src/main/java/com/securelock/ai/ui/screens/CalendarLaunchScreen.kt',
+    apis: [
+      'SecureLockNavHost startDestination = Routes.CALENDAR_LAUNCH',
+      'SecretDateUnlockEvaluator (5-tap + 4s timeout + month/background reset)',
+      'AndroidKeyStore AES-256-GCM + PBKDF2WithHmacSHA256 Secret PIN',
+      'Rate-limited verification & process-recreation guard',
+    ],
+    androidCompatibility:
+      'Launches directly as a standalone Material 3 monthly Calendar on Android 8.0–16 without flashing the dashboard. Back-press and backgrounding relock cleanly.',
+    summary:
+      'Every app launch opens a genuine monthly Calendar with zero AppLock branding. Navigate to your secret month/year and tap the secret date 5 times to open the discreet PIN prompt.',
+  },
   unlock: {
     id: 'unlock',
     title: 'Multi-Method Unlock Gate & Biometrics',
