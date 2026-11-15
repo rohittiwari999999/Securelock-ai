@@ -49,13 +49,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -167,28 +170,42 @@ fun Modifier.neuglassSurface(
         val cr = CornerRadius(radiusPx, radiusPx)
         val liftOffset = (4.dp.toPx() * elevationScale).coerceAtLeast(1f)
         val shadowOffset = (5.dp.toPx() * elevationScale).coerceAtLeast(1.5f)
+        val innerPath = Path().apply {
+            addRoundRect(
+                RoundRect(
+                    left = 0f,
+                    top = 0f,
+                    right = size.width,
+                    bottom = size.height,
+                    cornerRadius = cr
+                )
+            )
+        }
 
-        // 1. Neumorphic bottom-right ambient shadow
-        drawRoundRect(
-            color = Color.Black.copy(alpha = if (isDarkCanvas) 0.42f else 0.11f),
-            topLeft = Offset(shadowOffset, shadowOffset),
-            size = size,
-            cornerRadius = cr
-        )
-        drawRoundRect(
-            color = Color.Black.copy(alpha = if (isDarkCanvas) 0.22f else 0.06f),
-            topLeft = Offset(shadowOffset * 1.6f, shadowOffset * 1.6f),
-            size = size,
-            cornerRadius = cr
-        )
+        // Clip out the card interior so outer neumorphic shadows/highlights never muddy the translucent glass fill
+        clipPath(innerPath, clipOp = ClipOp.Difference) {
+            // 1. Neumorphic bottom-right ambient shadow
+            drawRoundRect(
+                color = Color.Black.copy(alpha = if (isDarkCanvas) 0.44f else 0.13f),
+                topLeft = Offset(shadowOffset, shadowOffset),
+                size = size,
+                cornerRadius = cr
+            )
+            drawRoundRect(
+                color = Color.Black.copy(alpha = if (isDarkCanvas) 0.24f else 0.07f),
+                topLeft = Offset(shadowOffset * 1.6f, shadowOffset * 1.6f),
+                size = size,
+                cornerRadius = cr
+            )
 
-        // 2. Neumorphic top-left light extrusion
-        drawRoundRect(
-            color = Color.White.copy(alpha = if (isDarkCanvas) 0.09f else 0.85f),
-            topLeft = Offset(-liftOffset, -liftOffset),
-            size = size,
-            cornerRadius = cr
-        )
+            // 2. Neumorphic top-left light extrusion
+            drawRoundRect(
+                color = Color.White.copy(alpha = if (isDarkCanvas) 0.11f else 0.88f),
+                topLeft = Offset(-liftOffset, -liftOffset),
+                size = size,
+                cornerRadius = cr
+            )
+        }
 
         // 3. Glassmorphic frosted translucent body
         val topAlpha = if (isDarkSurface) 0.72f else 0.86f

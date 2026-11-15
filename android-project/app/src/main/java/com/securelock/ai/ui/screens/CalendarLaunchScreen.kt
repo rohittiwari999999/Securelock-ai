@@ -293,6 +293,7 @@ fun CalendarLaunchScreen(
                     Card(
                         shape = RoundedCornerShape(22.dp),
                         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                         modifier = Modifier.neuglassSurface(
                             cornerRadius = 22.dp,
                             surfaceColor = MaterialTheme.colorScheme.primaryContainer,

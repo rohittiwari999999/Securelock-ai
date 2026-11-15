@@ -282,8 +282,9 @@ fun AppProtectionGateScreen(
     }
 
     NeuglassBackdrop(
-        accentColor = Color(config.accentHex),
-        secondaryColor = Color(config.accentHex)
+        baseBackground = Color(config.backgroundHex),
+        primaryGlow = Color(config.accentHex),
+        secondaryGlow = Color(config.accentHex)
     ) {
         Box(
             modifier = Modifier
