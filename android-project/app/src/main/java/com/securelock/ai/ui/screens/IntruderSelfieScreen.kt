@@ -87,7 +87,7 @@ fun IntruderSelfieScreen(
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             SecureTopBar(
                 title = "Intruder Detection",

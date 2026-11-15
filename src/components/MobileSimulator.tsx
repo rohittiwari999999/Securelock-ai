@@ -510,12 +510,104 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
     [vaultItems]
   );
 
+  const hexToRgb = (hex: string): [number, number, number] => {
+    const clean = hex.replace('#', '');
+    const full = clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean;
+    const num = parseInt(full, 16);
+    if (Number.isNaN(num)) return [255, 255, 255];
+    return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+  };
+
+  const isLightColor = (hex: string): boolean => {
+    const [r, g, b] = hexToRgb(hex);
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.62;
+  };
+
   const cardClasses =
     cardStyle === 'Outlined'
-      ? 'border border-slate-300/40 rounded-2xl'
+      ? 'rounded-2xl transition-all'
       : cardStyle === 'Compact'
-        ? 'rounded-xl shadow-sm'
-        : 'rounded-2xl shadow-md';
+        ? 'rounded-xl transition-all'
+        : 'rounded-2xl transition-all';
+
+  const simCardStyle = useMemo(() => {
+    const [r, g, b] = hexToRgb(activeTheme.card);
+    const lightCard = isLightColor(activeTheme.card);
+    const lightBg = isLightColor(activeTheme.bg);
+    const isOutlined = cardStyle === 'Outlined';
+    const isCompact = cardStyle === 'Compact';
+
+    if (lightCard) {
+      return {
+        background: `linear-gradient(145deg, rgba(${r},${g},${b},0.88) 0%, rgba(${Math.max(r - 12, 0)},${Math.max(g - 8, 0)},${b},0.68) 100%)`,
+        color: activeTheme.cardText,
+        backdropFilter: 'blur(18px) saturate(150%)',
+        WebkitBackdropFilter: 'blur(18px) saturate(150%)',
+        border: isOutlined
+          ? `1.5px solid ${activeTheme.accent}66`
+          : '1px solid rgba(255,255,255,0.85)',
+        boxShadow: isCompact
+          ? lightBg
+            ? '-4px -4px 10px rgba(255,255,255,0.85), 5px 6px 14px rgba(15,23,42,0.10), inset 1px 1px 1px rgba(255,255,255,0.9)'
+            : `-3px -3px 10px rgba(255,255,255,0.12), 5px 7px 16px rgba(2,6,23,0.38), inset 1px 1px 1px rgba(255,255,255,0.9)`
+          : lightBg
+            ? '-7px -7px 16px rgba(255,255,255,0.9), 8px 10px 22px rgba(15,23,42,0.12), inset 1px 1px 1px rgba(255,255,255,0.94)'
+            : `-5px -5px 14px rgba(255,255,255,0.15), 8px 12px 24px rgba(2,6,23,0.44), inset 1px 1px 1px rgba(255,255,255,0.94)`,
+      };
+    }
+
+    return {
+      background: `linear-gradient(145deg, rgba(${Math.min(r + 18, 255)},${Math.min(g + 18, 255)},${Math.min(b + 24, 255)},0.82) 0%, rgba(${r},${g},${b},0.62) 100%)`,
+      color: activeTheme.cardText,
+      backdropFilter: 'blur(18px) saturate(155%)',
+      WebkitBackdropFilter: 'blur(18px) saturate(155%)',
+      border: isOutlined
+        ? `1.5px solid ${activeTheme.secondary}77`
+        : `1px solid rgba(255,255,255,0.16)`,
+      boxShadow: isCompact
+        ? `-3px -3px 8px rgba(255,255,255,0.05), 5px 6px 14px rgba(0,0,0,0.55), inset 1px 1px 1px rgba(255,255,255,0.16)`
+        : `-5px -5px 14px rgba(255,255,255,0.06), 8px 10px 22px rgba(0,0,0,0.62), inset 1px 1px 1px rgba(255,255,255,0.2)`,
+    };
+  }, [activeTheme, cardStyle]);
+
+  const simBackdropStyle = useMemo(() => {
+    const [ar, ag, ab] = hexToRgb(activeTheme.accent);
+    const [sr, sg, sb] = hexToRgb(activeTheme.secondary);
+    return {
+      backgroundColor: activeTheme.bg,
+      color: activeTheme.fg,
+      backgroundImage: `radial-gradient(circle at 12% 10%, rgba(${sr},${sg},${sb},0.22) 0%, transparent 48%), radial-gradient(circle at 88% 82%, rgba(${ar},${ag},${ab},0.26) 0%, transparent 52%)`,
+    };
+  }, [activeTheme]);
+
+  const simOrbStyle = useMemo(() => {
+    const lightBg = isLightColor(activeTheme.bg);
+    return {
+      background: lightBg
+        ? 'linear-gradient(145deg, rgba(255,255,255,0.85), rgba(226,232,240,0.62))'
+        : 'linear-gradient(145deg, rgba(255,255,255,0.16), rgba(255,255,255,0.05))',
+      color: activeTheme.secondary,
+      border: lightBg ? '1px solid rgba(255,255,255,0.85)' : '1px solid rgba(255,255,255,0.18)',
+      boxShadow: lightBg
+        ? '-4px -4px 10px rgba(255,255,255,0.85), 5px 5px 12px rgba(15,23,42,0.12)'
+        : '-3px -3px 8px rgba(255,255,255,0.08), 5px 6px 14px rgba(0,0,0,0.45)',
+    };
+  }, [activeTheme]);
+
+  const simInsetWellStyle = useMemo(() => {
+    const lightCard = isLightColor(activeTheme.card);
+    return lightCard
+      ? {
+          background: 'linear-gradient(145deg, rgba(226,234,246,0.75), rgba(248,251,255,0.82))',
+          border: '1px solid rgba(255,255,255,0.7)',
+          boxShadow: 'inset 3px 3px 6px rgba(15,23,42,0.10), inset -3px -3px 6px rgba(255,255,255,0.88)',
+        }
+      : {
+          background: 'linear-gradient(145deg, rgba(4,9,20,0.58), rgba(255,255,255,0.05))',
+          border: '1px solid rgba(255,255,255,0.12)',
+          boxShadow: 'inset 3px 3px 7px rgba(0,0,0,0.52), inset -2px -2px 6px rgba(255,255,255,0.06)',
+        };
+  }, [activeTheme]);
 
   const handlePatternTap = (node: number) => {
     if (enteredPattern.includes(node)) return;
@@ -579,11 +671,19 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
     return (
       <div
         className="h-full flex items-center justify-center p-5"
-        style={{ backgroundColor: coverBg }}
+        style={{
+          backgroundColor: coverBg,
+          backgroundImage: `radial-gradient(circle at 20% 20%, ${activeTheme.accent}33 0%, transparent 50%), radial-gradient(circle at 80% 80%, ${activeTheme.secondary}26 0%, transparent 50%)`,
+        }}
       >
-        <div className="bg-white rounded-3xl p-6 w-full text-center shadow-xl">
+        <div
+          className="rounded-3xl p-6 w-full text-center backdrop-blur-xl border border-white/80 shadow-[0_20px_48px_rgba(2,6,23,0.48),-6px_-6px_16px_rgba(255,255,255,0.12)]"
+          style={{
+            background: 'linear-gradient(145deg, rgba(255,255,255,0.92), rgba(241,246,255,0.78))',
+          }}
+        >
           <div
-            className="w-14 h-14 rounded-full mx-auto flex items-center justify-center mb-4"
+            className="w-14 h-14 rounded-full mx-auto flex items-center justify-center mb-4 border border-white/80 shadow-[-4px_-4px_10px_rgba(255,255,255,0.9),5px_6px_14px_rgba(15,23,42,0.14)]"
             style={{ backgroundColor: `${activeTheme.accent}1A`, color: activeTheme.accent }}
           >
             <CoverIcon className="w-7 h-7" />
@@ -820,10 +920,10 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
   };
 
   return (
-    <div className="w-full max-w-[390px] mx-auto bg-[#070F1D] rounded-[42px] p-3 shadow-2xl border border-slate-800">
+    <div className="w-full max-w-[390px] mx-auto bg-gradient-to-br from-[#0F1B31] to-[#050B16] rounded-[44px] p-3 shadow-[-10px_-10px_28px_rgba(255,255,255,0.85),16px_20px_42px_rgba(15,23,42,0.28)] border border-white/30">
       <div
-        className="rounded-[34px] overflow-hidden h-[740px] flex flex-col relative transition-colors"
-        style={{ backgroundColor: activeTheme.bg, color: activeTheme.fg }}
+        className="rounded-[34px] overflow-hidden h-[740px] flex flex-col relative transition-colors border border-white/10"
+        style={simBackdropStyle}
       >
         {/* Android Status Bar */}
         <div className="px-6 pt-3 pb-2 flex items-center justify-between text-[11px] font-medium opacity-80 shrink-0">
@@ -845,12 +945,21 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
           {showingCoverPreview ? (
             renderCoverScreen(launchedTargetApp ?? 'WhatsApp', true)
           ) : activeScreen === 'calendar' ? (
-            <div className="min-h-full bg-[#F8FAFD] text-[#1F1F1F] p-4 flex flex-col gap-3.5 relative">
+            <div
+              className="min-h-full text-[#1F1F1F] p-4 flex flex-col gap-3.5 relative"
+              style={{
+                backgroundColor: '#EBF1FA',
+                backgroundImage:
+                  'radial-gradient(circle at 12% 8%, rgba(26,115,232,0.18) 0%, transparent 46%), radial-gradient(circle at 90% 86%, rgba(56,189,248,0.18) 0%, transparent 48%), linear-gradient(160deg, #F3F7FE 0%, #E7EFFB 100%)',
+              }}
+            >
               {/* Standalone Calendar Top Bar (zero AppLock branding) */}
               <div className="flex items-center justify-between px-1 pt-1">
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-[#1A73E8]" />
-                  <span className="text-lg font-semibold tracking-tight">Calendar</span>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-full neuglass-card flex items-center justify-center">
+                    <Calendar className="w-4 h-4 text-[#1A73E8]" />
+                  </div>
+                  <span className="text-lg font-semibold tracking-tight text-[#0A1628]">Calendar</span>
                 </div>
                 <button
                   type="button"
@@ -860,7 +969,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                     setCalSelectedDay(initialToday.getDate());
                     setCalTapState({ day: 0, month: 0, year: 0, count: 0, lastTapAt: 0 });
                   }}
-                  className="text-xs font-semibold text-[#1A73E8] px-2.5 py-1 rounded-lg hover:bg-blue-50"
+                  className="neuglass-pill text-xs font-semibold text-[#1A73E8] px-3 py-1.5 rounded-full"
                 >
                   Today
                 </button>
@@ -868,18 +977,26 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
 
               {/* Visual First-Time Instruction Banner (only before AppLock setup is completed) */}
               {!simAppLockConfigured && (
-                <div className="bg-[#D2E3FC] text-[#041E49] rounded-2xl p-3.5 space-y-2 border border-[#1A73E8]/20">
+                <div
+                  className="rounded-3xl p-3.5 space-y-2 border border-white/80 backdrop-blur-md shadow-[-6px_-6px_14px_rgba(255,255,255,0.85),6px_8px_18px_rgba(26,115,232,0.14)]"
+                  style={{
+                    background: 'linear-gradient(145deg, rgba(219,234,254,0.82), rgba(239,246,255,0.65))',
+                    color: '#041E49',
+                  }}
+                >
                   <div className="text-xs font-bold">Step 1: Select Secret Date</div>
                   <p className="text-[11px] leading-relaxed">
                     Choose any date on the calendar below and tap it 5 times to continue to AppLock setup.
                   </p>
-                  <div className="flex items-center justify-between pt-0.5">
+                  <div className="flex items-center justify-between pt-0.5 neuglass-inset rounded-xl px-2.5 py-1.5">
                     <div className="flex items-center gap-1.5">
                       {[0, 1, 2, 3, 4].map((dot) => (
                         <span
                           key={dot}
                           className={`w-2.5 h-2.5 rounded-full transition-colors ${
-                            dot < calTapState.count ? 'bg-[#1A73E8]' : 'bg-[#041E49]/20'
+                            dot < calTapState.count
+                              ? 'bg-[#1A73E8] shadow-[0_0_8px_rgba(26,115,232,0.6)]'
+                              : 'bg-[#041E49]/20'
                           }`}
                         />
                       ))}
@@ -892,19 +1009,19 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
               )}
 
               {/* Monthly Grid Card */}
-              <div className="bg-white rounded-3xl p-4 shadow-sm border border-slate-200/70 space-y-3">
+              <div className="neuglass-card rounded-3xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="text-base font-bold text-[#1F1F1F]">
+                  <div className="text-base font-bold text-[#0A1628]">
                     {new Date(calYear, calMonth - 1, 1).toLocaleDateString('en-US', {
                       month: 'long',
                       year: 'numeric',
                     })}
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => changeCalMonth(-1)}
-                      className="p-1.5 rounded-full hover:bg-slate-100 text-slate-700"
+                      className="w-8 h-8 rounded-full neuglass-pill flex items-center justify-center text-slate-700"
                       aria-label="Previous month"
                     >
                       <ChevronLeft className="w-4 h-4" />
@@ -912,7 +1029,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                     <button
                       type="button"
                       onClick={() => changeCalMonth(1)}
-                      className="p-1.5 rounded-full hover:bg-slate-100 text-slate-700"
+                      className="w-8 h-8 rounded-full neuglass-pill flex items-center justify-center text-slate-700"
                       aria-label="Next month"
                     >
                       <ChevronRight className="w-4 h-4" />
@@ -945,14 +1062,14 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                         type="button"
                         disabled={!cell.inMonth}
                         onClick={() => cell.inMonth && handleCalDateTap(cell.day)}
-                        className={`aspect-square mx-auto w-9 h-9 rounded-full flex items-center justify-center text-xs transition-colors ${
+                        className={`aspect-square mx-auto w-9 h-9 rounded-full flex items-center justify-center text-xs transition-all ${
                           !cell.inMonth
                             ? 'text-slate-300 cursor-default'
                             : isToday
-                              ? 'bg-[#1A73E8] text-white font-bold'
+                              ? 'bg-gradient-to-br from-[#1A73E8] to-[#0284C7] text-white font-bold shadow-[0_4px_12px_rgba(26,115,232,0.4)]'
                               : isSelected
-                                ? 'bg-[#D2E3FC] text-[#041E49] font-bold'
-                                : 'text-[#1F1F1F] hover:bg-slate-100 font-medium'
+                                ? 'neuglass-inset text-[#041E49] font-bold'
+                                : 'text-[#1F1F1F] hover:bg-white/60 font-medium'
                         }`}
                       >
                         {cell.day}
@@ -963,8 +1080,8 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
               </div>
 
               {/* Standalone Day Agenda Summary */}
-              <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/70 space-y-2">
-                <div className="text-sm font-bold text-[#1F1F1F]">
+              <div className="neuglass-card rounded-3xl p-4 space-y-2">
+                <div className="text-sm font-bold text-[#0A1628]">
                   {new Date(calYear, calMonth - 1, calSelectedDay).toLocaleDateString('en-US', {
                     weekday: 'long',
                     month: 'long',
@@ -973,7 +1090,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                   })}
                 </div>
                 <div className="flex gap-2 text-[11px] text-[#5F6368]">
-                  <span className="px-2.5 py-1 rounded-lg bg-[#EFF3F8]">
+                  <span className="neuglass-inset px-2.5 py-1 rounded-xl font-medium text-[#0A1628]">
                     Week{' '}
                     {Math.ceil(
                       ((new Date(calYear, calMonth - 1, calSelectedDay).getTime() -
@@ -984,15 +1101,15 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                         7
                     )}
                   </span>
-                  <span className="px-2.5 py-1 rounded-lg bg-[#EFF3F8]">No upcoming reminders</span>
+                  <span className="neuglass-inset px-2.5 py-1 rounded-xl">No upcoming reminders</span>
                 </div>
                 <p className="text-xs text-[#5F6368] pt-1">No events scheduled for this day</p>
               </div>
 
-              {/* Step 2: Direct Pattern Lock Setup Window (Pattern Lock only) */}
+              {/* Step 2: Direct Pattern Lock Setup Window */}
               {pendingChosenDate && !simAppLockConfigured && (
-                <div className="absolute inset-0 bg-black/50 flex items-center justify-center p-4 z-30">
-                  <div className="bg-white rounded-3xl p-5 w-full max-w-[310px] shadow-2xl space-y-3 text-[#1F1F1F] max-h-[610px] overflow-y-auto">
+                <div className="absolute inset-0 bg-[#0A1628]/45 backdrop-blur-md flex items-center justify-center p-4 z-30">
+                  <div className="neuglass-card rounded-3xl p-5 w-full max-w-[310px] space-y-3 text-[#0A1628] max-h-[610px] overflow-y-auto">
                     <div className="text-base font-bold">Step 2: Set App Lock</div>
                     <p className="text-[11px] text-[#5F6368]">
                       Choose Pattern or PIN and enable Fingerprint unlock for your locked apps:
@@ -1021,7 +1138,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                     {setupMethodChoice === 'PATTERN' ? (
                       <div className="space-y-2">
                         <div className="text-[11px] font-medium text-[#1A73E8]">{setupPatternHint}</div>
-                        <div className="grid grid-cols-3 gap-2 max-w-[165px] mx-auto bg-slate-100 p-3 rounded-2xl">
+                        <div className="grid grid-cols-3 gap-2 max-w-[165px] mx-auto neuglass-inset p-3 rounded-2xl">
                           {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => {
                             const idx = setupPatternDraft.indexOf(n);
                             return (
@@ -1032,10 +1149,10 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                                   !setupPatternDraft.includes(n) &&
                                   setSetupPatternDraft([...setupPatternDraft, n])
                                 }
-                                className={`h-9 rounded-full text-xs font-bold ${
+                                className={`h-9 rounded-full text-xs font-bold transition-all ${
                                   idx >= 0
-                                    ? 'bg-[#1A73E8] text-white'
-                                    : 'bg-white text-slate-700 border border-slate-300'
+                                    ? 'bg-[#1A73E8] text-white shadow-[0_3px_10px_rgba(26,115,232,0.45)]'
+                                    : 'neuglass-pill text-slate-700'
                                 }`}
                               >
                                 {idx >= 0 ? idx + 1 : n + 1}
@@ -1195,12 +1312,12 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                     {themeId} · {appIconStyle}
                   </p>
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => onScreenChange('permissions')}
-                    className="p-2 rounded-xl"
-                    style={{ backgroundColor: activeTheme.surface, color: activeTheme.secondary }}
+                    className="w-9 h-9 rounded-full flex items-center justify-center neuglass-orb"
+                    style={simOrbStyle}
                     aria-label="Permissions Manager"
                   >
                     <Shield className="w-4 h-4" />
@@ -1208,8 +1325,8 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                   <button
                     type="button"
                     onClick={() => onScreenChange('settings')}
-                    className="p-2 rounded-xl"
-                    style={{ backgroundColor: activeTheme.surface, color: activeTheme.secondary }}
+                    className="w-9 h-9 rounded-full flex items-center justify-center neuglass-orb"
+                    style={simOrbStyle}
                     aria-label="Settings"
                   >
                     <Settings className="w-4 h-4" />
@@ -1218,13 +1335,21 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
               </div>
 
               <div
-                className="rounded-2xl p-3.5 flex items-center justify-between"
-                style={{ backgroundColor: activeTheme.surface }}
+                className="rounded-3xl p-3.5 flex items-center justify-between backdrop-blur-xl"
+                style={{
+                  background: `linear-gradient(135deg, ${activeTheme.surface}D9 0%, ${activeTheme.bg}B8 100%)`,
+                  border: `1px solid ${activeTheme.secondary}33`,
+                  boxShadow: `-5px -5px 14px rgba(255,255,255,0.08), 8px 10px 22px rgba(0,0,0,0.38), inset 1px 1px 1px rgba(255,255,255,0.2)`,
+                }}
               >
                 <div className="flex items-center gap-3">
                   <div
-                    className="w-10 h-10 rounded-xl flex items-center justify-center"
-                    style={{ backgroundColor: `${activeTheme.accent}33`, color: activeTheme.secondary }}
+                    className="w-10 h-10 rounded-2xl flex items-center justify-center border border-white/20"
+                    style={{
+                      backgroundColor: `${activeTheme.accent}33`,
+                      color: activeTheme.secondary,
+                      boxShadow: 'inset 2px 2px 5px rgba(0,0,0,0.3)',
+                    }}
                   >
                     <Shield className="w-5 h-5" />
                   </div>
@@ -1238,8 +1363,11 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                 <button
                   type="button"
                   onClick={() => onScreenChange('calendar')}
-                  className="text-xs font-semibold"
-                  style={{ color: activeTheme.secondary }}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-xl border border-white/20 backdrop-blur-md"
+                  style={{
+                    backgroundColor: `${activeTheme.accent}2B`,
+                    color: activeTheme.secondary,
+                  }}
                 >
                   Lock
                 </button>
@@ -1253,14 +1381,14 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                       key={mod.id}
                       type="button"
                       onClick={() => onScreenChange(mod.id)}
-                      className={`${cardClasses} p-3 text-left transition-transform active:scale-[0.99] flex flex-col justify-between min-h-[112px]`}
-                      style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                      className={`${cardClasses} p-3 text-left transition-transform active:scale-[0.98] flex flex-col justify-between min-h-[112px]`}
+                      style={simCardStyle}
                     >
                       <div className="flex items-center justify-between w-full mb-2">
                         <span
                           className="w-8 h-8 rounded-xl flex items-center justify-center"
                           style={{
-                            backgroundColor: `${activeTheme.accent}1F`,
+                            ...simInsetWellStyle,
                             color: activeTheme.accent,
                           }}
                         >
@@ -1285,12 +1413,18 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
           ) : (
             <div className="flex flex-col h-full">
               {/* Inner Top App Bar */}
-              <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between shrink-0">
+              <div
+                className="px-4 py-3 border-b border-white/15 flex items-center justify-between shrink-0 backdrop-blur-xl"
+                style={{
+                  background: `linear-gradient(180deg, ${activeTheme.surface}B8 0%, ${activeTheme.bg}88 100%)`,
+                }}
+              >
                 <div className="flex items-center gap-2.5">
                   <button
                     type="button"
                     onClick={() => onScreenChange('dashboard')}
-                    className="p-1.5 rounded-lg hover:bg-white/10"
+                    className="w-8 h-8 rounded-full flex items-center justify-center neuglass-orb"
+                    style={simOrbStyle}
                     aria-label="Back to dashboard"
                   >
                     <ArrowLeft className="w-4 h-4" />
@@ -1302,8 +1436,11 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                 <button
                   type="button"
                   onClick={() => onScreenChange('calendar')}
-                  className="text-[11px] font-medium"
-                  style={{ color: activeTheme.secondary }}
+                  className="text-[11px] font-semibold px-2.5 py-1 rounded-xl border border-white/15"
+                  style={{
+                    backgroundColor: `${activeTheme.accent}24`,
+                    color: activeTheme.secondary,
+                  }}
                 >
                   Lock Now
                 </button>
@@ -1324,7 +1461,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                     {!vaultUnlocked ? (
                       <div
                         className={`${cardClasses} p-5 space-y-3 text-center`}
-                        style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                        style={simCardStyle}
                       >
                         <Lock className="w-9 h-9 mx-auto" style={{ color: activeTheme.accent }} />
                         <div className="text-sm font-bold">Vault Locked</div>
@@ -1353,7 +1490,10 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                         </div>
                         {vaultGateMode === 'PATTERN' ? (
                           <>
-                            <div className="grid grid-cols-3 gap-2 max-w-[156px] mx-auto bg-slate-100 p-3 rounded-2xl">
+                            <div
+                              className="grid grid-cols-3 gap-2 max-w-[156px] mx-auto p-3 rounded-2xl"
+                              style={simInsetWellStyle}
+                            >
                               {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => {
                                 const idx = vaultPatternDraft.indexOf(n);
                                 return (
@@ -1364,11 +1504,20 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                                       !vaultPatternDraft.includes(n) &&
                                       setVaultPatternDraft([...vaultPatternDraft, n])
                                     }
-                                    className="h-9 rounded-full text-xs font-bold"
+                                    className="h-9 rounded-full text-xs font-bold neuglass-orb"
                                     style={
                                       idx >= 0
-                                        ? { backgroundColor: activeTheme.accent, color: '#FFFFFF' }
-                                        : { backgroundColor: '#FFFFFF', color: '#0A1628', border: '1px solid #CBD5E1' }
+                                        ? {
+                                            backgroundColor: activeTheme.accent,
+                                            color: '#FFFFFF',
+                                            boxShadow: `0 4px 12px ${activeTheme.accent}66`,
+                                          }
+                                        : {
+                                            backgroundColor: 'rgba(255,255,255,0.86)',
+                                            color: '#0A1628',
+                                            border: '1px solid rgba(255,255,255,0.9)',
+                                            boxShadow: '-2px -2px 6px rgba(255,255,255,0.85), 3px 3px 8px rgba(15,23,42,0.12)',
+                                          }
                                     }
                                   >
                                     {idx >= 0 ? idx + 1 : n + 1}
@@ -1475,7 +1624,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                       <>
                         <div
                           className={`${cardClasses} p-3.5 space-y-2.5`}
-                          style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                          style={simCardStyle}
                         >
                           <div className="flex items-center justify-between text-xs">
                             <span className="font-bold">AES-256-GCM Storage</span>
@@ -1629,7 +1778,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                         {filteredVaultItems.length === 0 ? (
                           <div
                             className={`${cardClasses} p-4 text-xs opacity-75`}
-                            style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                            style={simCardStyle}
                           >
                             No items in this album. Tap Import Photos/Videos to encrypt local files.
                           </div>
@@ -1639,7 +1788,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                               <div
                                 key={it.id}
                                 className={`${cardClasses} p-2.5 space-y-1.5`}
-                                style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                                style={simCardStyle}
                               >
                                 <button
                                   type="button"
@@ -1680,7 +1829,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                               <div
                                 key={it.id}
                                 className={`${cardClasses} p-3 flex items-center justify-between`}
-                                style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                                style={simCardStyle}
                               >
                                 <button
                                   type="button"
@@ -1757,7 +1906,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                   <>
                     <div
                       className={`${cardClasses} p-3.5 space-y-2`}
-                      style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                      style={simCardStyle}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div>
@@ -1799,7 +1948,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
 
                     <div
                       className={`${cardClasses} p-3.5 space-y-2`}
-                      style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                      style={simCardStyle}
                     >
                       <div className="flex items-center justify-between">
                         <div>
@@ -1853,7 +2002,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                       <div
                         key={app.packageName}
                         className={`${cardClasses} p-3 space-y-2`}
-                        style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                        style={simCardStyle}
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0">
@@ -1915,7 +2064,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                   <>
                     <div
                       className={`${cardClasses} p-3.5 space-y-2.5`}
-                      style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                      style={simCardStyle}
                     >
                       <div className="flex items-center justify-between">
                         <div className="text-xs font-bold">Foreground Intruder Capture</div>
@@ -1976,7 +2125,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                       <div
                         key={item.id}
                         className={`${cardClasses} p-3.5 flex items-center justify-between`}
-                        style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                        style={simCardStyle}
                       >
                         <div>
                           <div className="text-xs font-bold text-rose-500">
@@ -2005,7 +2154,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                   <>
                     <div
                       className={`${cardClasses} p-3.5 space-y-2`}
-                      style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                      style={simCardStyle}
                     >
                       <div className="flex items-center justify-between">
                         <div className="text-xs font-bold">Notification Privacy Vault</div>
@@ -2046,7 +2195,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                       <div
                         key={n.id}
                         className={`${cardClasses} p-3.5`}
-                        style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                        style={simCardStyle}
                       >
                         <div className="flex justify-between text-xs font-bold">
                           <span>{n.app}</span>
@@ -2065,7 +2214,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                 {activeScreen === 'fake_crash' && (
                   <div
                     className={`${cardClasses} p-4 space-y-3`}
-                    style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                    style={simCardStyle}
                   >
                     <div className="flex items-center justify-between">
                       <div>
@@ -2161,7 +2310,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                   <>
                     <div
                       className={`${cardClasses} p-4 space-y-2.5`}
-                      style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                      style={simCardStyle}
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold">CAMERA Permission</span>
@@ -2192,7 +2341,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                     {cameraTestActive && cameraGranted && (
                       <div
                         className={`${cardClasses} p-3.5`}
-                        style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                        style={simCardStyle}
                       >
                         <div className="text-xs font-bold mb-1">Foreground CameraX Preview Active</div>
                         <div className="h-28 rounded-xl bg-[#0A1628] flex flex-col items-center justify-center text-sky-300">
@@ -2296,7 +2445,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                     )}
                     <div
                       className={`${cardClasses} p-4 min-h-[210px] flex flex-col justify-between`}
-                      style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                      style={simCardStyle}
                     >
                       <div>
                         <div className="text-[11px] text-emerald-500 font-semibold mb-1">
@@ -2378,7 +2527,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                     <div className="grid grid-cols-2 gap-2.5">
                       <div
                         className={`${cardClasses} p-3`}
-                        style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                        style={simCardStyle}
                       >
                         <div className="text-[11px] opacity-70">Protected Apps</div>
                         <div className="text-xl font-bold tabular-nums" style={{ color: activeTheme.accent }}>
@@ -2387,21 +2536,21 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                       </div>
                       <div
                         className={`${cardClasses} p-3`}
-                        style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                        style={simCardStyle}
                       >
                         <div className="text-[11px] opacity-70">Total Attempts</div>
                         <div className="text-xl font-bold tabular-nums">{stats.total}</div>
                       </div>
                       <div
                         className={`${cardClasses} p-3`}
-                        style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                        style={simCardStyle}
                       >
                         <div className="text-[11px] opacity-70">Successful</div>
                         <div className="text-xl font-bold text-emerald-500 tabular-nums">{stats.success}</div>
                       </div>
                       <div
                         className={`${cardClasses} p-3`}
-                        style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                        style={simCardStyle}
                       >
                         <div className="text-[11px] opacity-70">Failed</div>
                         <div className="text-xl font-bold text-rose-500 tabular-nums">{stats.failed}</div>
@@ -2409,7 +2558,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                     </div>
                     <div
                       className={`${cardClasses} p-3.5`}
-                      style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                      style={simCardStyle}
                     >
                       <div className="text-xs font-bold mb-2">Weekly Activity</div>
                       <div className="flex items-end justify-between h-24 gap-2 pt-2">
@@ -2441,7 +2590,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                         <div
                           key={ev.id}
                           className={`${cardClasses} p-3`}
-                          style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                          style={simCardStyle}
                         >
                           <div className="flex justify-between text-xs font-semibold">
                             <span className={ev.success ? '' : 'text-rose-500'}>{ev.title}</span>
@@ -2459,7 +2608,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                   <div className="space-y-3">
                     <div
                       className={`${cardClasses} p-3.5 space-y-2.5`}
-                      style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                      style={simCardStyle}
                     >
                       <div className="text-xs font-bold">8 Live Themes</div>
                       <div className="grid grid-cols-2 gap-1.5">
@@ -2497,7 +2646,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
 
                     <div
                       className={`${cardClasses} p-3.5 space-y-2.5`}
-                      style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                      style={simCardStyle}
                     >
                       <div className="text-xs font-bold">Custom Accent &amp; Card Style</div>
                       <div className="flex gap-2">
@@ -2552,7 +2701,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
 
                     <div
                       className={`${cardClasses} p-3.5 space-y-2`}
-                      style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                      style={simCardStyle}
                     >
                       <div className="text-xs font-bold">Custom App Icon (&lt;activity-alias&gt;)</div>
                       <div className="grid grid-cols-2 gap-1.5">
@@ -2586,7 +2735,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                   <div className="space-y-2.5">
                     <div
                       className={`${cardClasses} p-3.5 space-y-2`}
-                      style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                      style={simCardStyle}
                     >
                       <div className="text-xs font-bold">Lock Methods (Pattern, PIN &amp; Fingerprint)</div>
                       <p className="text-[11px] opacity-75">
@@ -2729,7 +2878,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
 
                     <div
                       className={`${cardClasses} p-3.5 space-y-2`}
-                      style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                      style={simCardStyle}
                     >
                       <div className="flex items-center justify-between">
                         <div className="text-xs font-bold">Secret Date Unlock (Calendar Stealth)</div>
@@ -2825,7 +2974,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
 
                     <div
                       className={`${cardClasses} p-3.5 space-y-2`}
-                      style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                      style={simCardStyle}
                     >
                       <div className="text-xs font-bold">Emergency Recovery &amp; Theme Studio</div>
                       <div className="text-[11px] font-mono bg-slate-200/70 text-[#0A1628] px-2.5 py-1.5 rounded-lg">
@@ -2888,7 +3037,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                       <div
                         key={p.name}
                         className={`${cardClasses} p-3.5`}
-                        style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                        style={simCardStyle}
                       >
                         <div className="flex justify-between items-center gap-2">
                           <span className="text-xs font-bold">{p.name}</span>
@@ -2928,17 +3077,17 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
         {/* Unified App Lock Overlay Preview (Pattern + PIN + Fingerprint) */}
         {patternOverlayTarget && (
           <div
-            className="absolute inset-0 z-40 p-5 flex flex-col justify-between"
-            style={{ backgroundColor: activeTheme.bg, color: activeTheme.fg }}
+            className="absolute inset-0 z-40 p-5 flex flex-col justify-between backdrop-blur-xl"
+            style={simBackdropStyle}
           >
             <div className="text-center pt-5">
               <div
-                className="w-14 h-14 rounded-full mx-auto flex items-center justify-center"
-                style={{ backgroundColor: activeTheme.surface }}
+                className="w-16 h-16 rounded-full mx-auto flex items-center justify-center neuglass-orb"
+                style={simOrbStyle}
               >
                 <Lock className="w-7 h-7" style={{ color: activeTheme.secondary }} />
               </div>
-              <h3 className="mt-2.5 text-lg font-bold">{patternOverlayTarget}</h3>
+              <h3 className="mt-3 text-lg font-bold">{patternOverlayTarget}</h3>
               <p className={`mt-1 text-xs ${authError ? 'text-rose-400' : 'opacity-75'}`}>
                 {authError
                   ? activeOverlayMode === 'PIN'
@@ -2960,11 +3109,18 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                       setEnteredPattern([]);
                       setEnteredPin('');
                     }}
-                    className="px-3 py-1 rounded-lg text-[11px] font-semibold"
+                    className="px-3 py-1 rounded-xl text-[11px] font-semibold transition-all border border-white/15"
                     style={
                       activeOverlayMode === m
-                        ? { backgroundColor: activeTheme.accent, color: '#FFFFFF' }
-                        : { backgroundColor: activeTheme.surface, color: activeTheme.fg }
+                        ? {
+                            backgroundColor: activeTheme.accent,
+                            color: '#FFFFFF',
+                            boxShadow: `0 4px 12px ${activeTheme.accent}55`,
+                          }
+                        : {
+                            backgroundColor: `${activeTheme.surface}B8`,
+                            color: activeTheme.fg,
+                          }
                     }
                   >
                     {m === 'PATTERN' ? 'Pattern' : 'PIN'}
@@ -2980,7 +3136,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                       setPatternOverlayTarget(null);
                       setLaunchedTargetApp(null);
                     }}
-                    className="px-3 py-1 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1"
+                    className="px-3 py-1 rounded-xl text-[11px] font-semibold inline-flex items-center gap-1 border border-white/15"
                     style={{ backgroundColor: `${activeTheme.secondary}26`, color: activeTheme.secondary }}
                   >
                     <Fingerprint className="w-3.5 h-3.5" />
@@ -2993,8 +3149,12 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
             {activeOverlayMode === 'PATTERN' ? (
               <div className="my-3 text-center">
                 <div
-                  className="grid grid-cols-3 gap-4 max-w-[180px] mx-auto p-4 rounded-2xl"
-                  style={{ backgroundColor: activeTheme.surface }}
+                  className="grid grid-cols-3 gap-4 max-w-[196px] mx-auto p-4 rounded-3xl backdrop-blur-lg border border-white/15"
+                  style={{
+                    background: `linear-gradient(145deg, ${activeTheme.surface}99, ${activeTheme.bg}88)`,
+                    boxShadow:
+                      'inset 4px 4px 10px rgba(0,0,0,0.45), inset -3px -3px 8px rgba(255,255,255,0.08)',
+                  }}
                 >
                   {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((node) => {
                     const activeIdx = enteredPattern.indexOf(node);
@@ -3003,11 +3163,23 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                         key={node}
                         type="button"
                         onClick={() => handlePatternTap(node)}
-                        className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold transition-colors"
+                        className="w-11 h-11 rounded-full flex items-center justify-center text-xs font-bold neuglass-orb"
                         style={
                           activeIdx >= 0
-                            ? { backgroundColor: activeTheme.secondary, color: '#0A1628' }
-                            : { backgroundColor: 'rgba(255,255,255,0.14)', color: activeTheme.fg }
+                            ? {
+                                backgroundColor: activeTheme.secondary,
+                                color: '#0A1628',
+                                border: '1px solid rgba(255,255,255,0.75)',
+                                boxShadow: `0 0 14px ${activeTheme.secondary}88`,
+                              }
+                            : {
+                                background:
+                                  'linear-gradient(145deg, rgba(255,255,255,0.16), rgba(255,255,255,0.05))',
+                                color: activeTheme.fg,
+                                border: '1px solid rgba(255,255,255,0.2)',
+                                boxShadow:
+                                  '-3px -3px 7px rgba(255,255,255,0.07), 4px 5px 10px rgba(0,0,0,0.42)',
+                              }
                         }
                       >
                         {activeIdx >= 0 ? activeIdx + 1 : node + 1}
@@ -3019,7 +3191,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                   <button
                     type="button"
                     onClick={() => setEnteredPattern([])}
-                    className="px-3 py-1.5 rounded-lg bg-white/10 text-xs"
+                    className="px-3.5 py-1.5 rounded-xl bg-white/10 border border-white/15 text-xs"
                   >
                     Clear
                   </button>
@@ -3040,7 +3212,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                         setAuthError(true);
                       }
                     }}
-                    className="px-4 py-1.5 rounded-lg text-white text-xs font-semibold"
+                    className="px-4 py-1.5 rounded-xl text-white text-xs font-semibold shadow-lg"
                     style={{ backgroundColor: activeTheme.accent }}
                   >
                     Verify Pattern
@@ -3049,19 +3221,27 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
               </div>
             ) : (
               <div className="my-3 text-center space-y-4">
-                <div className="flex justify-center gap-2.5">
+                <div
+                  className="inline-flex justify-center gap-2.5 px-4 py-2 rounded-full border border-white/15"
+                  style={{
+                    backgroundColor: 'rgba(0,0,0,0.28)',
+                    boxShadow: 'inset 2px 2px 6px rgba(0,0,0,0.45)',
+                  }}
+                >
                   {Array.from({ length: Math.max(masterPin.length, 4) }).map((_, i) => (
                     <span
                       key={i}
-                      className="w-3 h-3 rounded-full"
+                      className="w-3 h-3 rounded-full transition-all"
                       style={{
                         backgroundColor:
                           i < enteredPin.length ? activeTheme.secondary : 'rgba(255,255,255,0.22)',
+                        boxShadow:
+                          i < enteredPin.length ? `0 0 8px ${activeTheme.secondary}` : 'none',
                       }}
                     />
                   ))}
                 </div>
-                <div className="grid grid-cols-3 gap-2.5 max-w-[210px] mx-auto">
+                <div className="grid grid-cols-3 gap-3 max-w-[220px] mx-auto">
                   {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
                     <button
                       key={d}
@@ -3079,7 +3259,14 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                           setAuthError(true);
                         }
                       }}
-                      className="h-11 rounded-full bg-white/10 hover:bg-white/20 text-sm font-semibold"
+                      className="h-12 rounded-full text-sm font-semibold neuglass-orb"
+                      style={{
+                        background:
+                          'linear-gradient(145deg, rgba(255,255,255,0.16), rgba(255,255,255,0.05))',
+                        border: '1px solid rgba(255,255,255,0.22)',
+                        boxShadow:
+                          '-3px -3px 8px rgba(255,255,255,0.08), 5px 6px 12px rgba(0,0,0,0.45)',
+                      }}
                     >
                       {d}
                     </button>
@@ -3093,8 +3280,14 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                         setPatternOverlayTarget(null);
                         setLaunchedTargetApp(null);
                       }}
-                      className="h-11 rounded-full flex items-center justify-center"
-                      style={{ backgroundColor: `${activeTheme.accent}44`, color: activeTheme.secondary }}
+                      className="h-12 rounded-full flex items-center justify-center neuglass-orb"
+                      style={{
+                        background: `linear-gradient(145deg, ${activeTheme.accent}66, ${activeTheme.accent}33)`,
+                        color: activeTheme.secondary,
+                        border: `1px solid ${activeTheme.secondary}55`,
+                        boxShadow:
+                          '-3px -3px 8px rgba(255,255,255,0.08), 5px 6px 12px rgba(0,0,0,0.45)',
+                      }}
                       aria-label="Fingerprint unlock"
                     >
                       <Fingerprint className="w-5 h-5" />
@@ -3117,14 +3310,28 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                         setAuthError(true);
                       }
                     }}
-                    className="h-11 rounded-full bg-white/10 hover:bg-white/20 text-sm font-semibold"
+                    className="h-12 rounded-full text-sm font-semibold neuglass-orb"
+                    style={{
+                      background:
+                        'linear-gradient(145deg, rgba(255,255,255,0.16), rgba(255,255,255,0.05))',
+                      border: '1px solid rgba(255,255,255,0.22)',
+                      boxShadow:
+                        '-3px -3px 8px rgba(255,255,255,0.08), 5px 6px 12px rgba(0,0,0,0.45)',
+                    }}
                   >
                     0
                   </button>
                   <button
                     type="button"
                     onClick={() => setEnteredPin(enteredPin.slice(0, -1))}
-                    className="h-11 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center"
+                    className="h-12 rounded-full flex items-center justify-center neuglass-orb"
+                    style={{
+                      background:
+                        'linear-gradient(145deg, rgba(255,255,255,0.14), rgba(255,255,255,0.04))',
+                      border: '1px solid rgba(255,255,255,0.18)',
+                      boxShadow:
+                        '-3px -3px 8px rgba(255,255,255,0.07), 5px 6px 12px rgba(0,0,0,0.42)',
+                    }}
                     aria-label="Backspace"
                   >
                     <Delete className="w-4 h-4" />
@@ -3152,8 +3359,8 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
 
         {/* Accessibility Setup Help Prompt Preview */}
         {showAccessibilityHelp && (
-          <div className="absolute inset-0 z-50 bg-black/70 p-4 flex items-center justify-center">
-            <div className="w-full rounded-2xl bg-white text-[#0A1628] p-4 space-y-3 shadow-2xl">
+          <div className="absolute inset-0 z-50 bg-[#0A1628]/60 backdrop-blur-md p-4 flex items-center justify-center">
+            <div className="w-full rounded-3xl neuglass-card text-[#0A1628] p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="text-sm font-bold">How to Enable Accessibility</h4>
                 <button
@@ -3165,12 +3372,12 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                   <X className="w-4 h-4" />
                 </button>
               </div>
-              <div className="rounded-xl bg-blue-50 p-3 text-[11px] space-y-1.5 text-slate-700">
+              <div className="rounded-2xl neuglass-inset p-3 text-[11px] space-y-1.5 text-slate-700">
                 <div>1. Tap <strong>Open Accessibility Directly</strong> below — supported phones jump straight to <strong>SecureLock App Protection Monitor</strong>.</div>
                 <div>2. Or open <strong>Downloaded apps / Installed services</strong>.</div>
                 <div>3. Tap <strong>SecureLock App Protection Monitor</strong> and turn the switch <strong>ON</strong>.</div>
               </div>
-              <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-[11px] space-y-1 text-amber-950">
+              <div className="rounded-2xl bg-amber-50/90 backdrop-blur border border-amber-200 p-3 text-[11px] space-y-1 text-amber-950">
                 <div className="font-bold">Toggle greyed out / Restricted setting?</div>
                 <div>On Android 13–16 APK installs: tap <strong>Open App Info</strong> &rarr; top-right <strong>⋮ menu</strong> &rarr; <strong>Allow restricted settings</strong> &rarr; confirm PIN/Fingerprint.</div>
               </div>
@@ -3181,7 +3388,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                     setSimAccessibilityEnabled(true);
                     setShowAccessibilityHelp(false);
                   }}
-                  className="flex-1 py-2 rounded-xl text-xs font-semibold text-white"
+                  className="flex-1 py-2 rounded-xl text-xs font-semibold text-white shadow-md"
                   style={{ backgroundColor: activeTheme.accent }}
                 >
                   Open Accessibility Directly
@@ -3189,7 +3396,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                 <button
                   type="button"
                   onClick={() => setShowAccessibilityHelp(false)}
-                  className="px-3 py-2 rounded-xl bg-slate-200 text-[#0A1628] text-xs font-semibold"
+                  className="px-3 py-2 rounded-xl neuglass-pill text-[#0A1628] text-xs font-semibold"
                 >
                   Done
                 </button>

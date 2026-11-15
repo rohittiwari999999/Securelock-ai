@@ -42,7 +42,7 @@ export function PermissionsAndPolicyView() {
 
   return (
     <div className="space-y-8">
-      <div className="bg-white border border-slate-200 rounded-2xl p-6">
+      <div className="neuglass-card rounded-3xl p-6">
         <h2 className="text-xl font-bold text-[#0A1628] mb-2">
           Android Permissions &amp; Platform Limitations (API 26–36)
         </h2>
@@ -51,15 +51,15 @@ export function PermissionsAndPolicyView() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {permissions.map((perm) => (
-          <div key={perm.name} className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between">
+          <div key={perm.name} className="neuglass-card rounded-3xl p-5 flex flex-col justify-between">
             <div>
               <div className="text-sm font-bold text-[#0A1628] font-mono">{perm.name}</div>
               <div className="text-xs text-blue-600 font-medium mt-0.5 mb-3">{perm.scope}</div>
               <p className="text-sm text-slate-700 leading-relaxed mb-3">{perm.purpose}</p>
             </div>
-            <div className="pt-3 border-t border-slate-100 text-xs text-slate-500 flex items-start gap-2">
+            <div className="neuglass-inset rounded-2xl p-3 text-xs text-slate-600 flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <span>{perm.limitation}</span>
             </div>
@@ -67,7 +67,7 @@ export function PermissionsAndPolicyView() {
         ))}
       </div>
 
-      <div className="bg-[#0A1628] text-white rounded-2xl p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="neuglass-card-dark text-white rounded-3xl p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="space-y-1.5">
           <div className="flex items-center gap-2 text-sm font-semibold text-sky-400">
             <Lock className="w-4 h-4" />
@@ -158,28 +158,32 @@ export function SetupAndVerificationView() {
 
   return (
     <div className="space-y-8">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
         {steps.map((s) => (
-          <div key={s.num} className="bg-white border border-slate-200 rounded-2xl p-5">
-            <div className="text-xs font-mono font-semibold text-blue-600 mb-2">{s.num}</div>
+          <div key={s.num} className="neuglass-card rounded-3xl p-5">
+            <div className="inline-flex px-2.5 py-1 rounded-lg neuglass-inset text-xs font-mono font-semibold text-blue-600 mb-3">
+              {s.num}
+            </div>
             <h3 className="text-base font-bold text-[#0A1628] mb-2">{s.title}</h3>
             <p className="text-xs text-slate-600 leading-relaxed">{s.detail}</p>
           </div>
         ))}
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-200">
+      <div className="neuglass-card rounded-3xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-white/60">
           <h3 className="text-base font-bold text-[#0A1628]">Pre-Release Engineering Verification</h3>
         </div>
-        <div className="divide-y divide-slate-100">
+        <div className="divide-y divide-white/50">
           {verificationMatrix.map((row) => (
             <div key={row.item} className="px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-2">
               <div>
                 <div className="text-sm font-semibold text-[#0A1628]">{row.item}</div>
                 <div className="text-xs text-slate-600 mt-0.5">{row.detail}</div>
               </div>
-              <span className="text-xs font-semibold text-emerald-700 shrink-0">{row.status}</span>
+              <span className="neuglass-inset px-3 py-1 rounded-lg text-xs font-semibold text-emerald-700 shrink-0">
+                {row.status}
+              </span>
             </div>
           ))}
         </div>

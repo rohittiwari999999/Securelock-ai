@@ -13,6 +13,7 @@ import androidx.navigation.compose.rememberNavController
 import com.securelock.ai.security.SecureStorageRepository
 import com.securelock.ai.security.VaultRepository
 import com.securelock.ai.service.AppLockSessionManager
+import com.securelock.ai.ui.components.NeuglassBackdrop
 import com.securelock.ai.ui.screens.AppLockScreen
 import com.securelock.ai.ui.screens.CalendarLaunchScreen
 import com.securelock.ai.ui.screens.CameraPrivacyMonitorScreen
@@ -65,10 +66,11 @@ fun SecureLockNavHost(
         }
     }
 
-    NavHost(
-        navController = navController,
-        startDestination = startRoute
-    ) {
+    NeuglassBackdrop {
+        NavHost(
+            navController = navController,
+            startDestination = startRoute
+        ) {
         composable(Routes.CALENDAR_LAUNCH) {
             CalendarLaunchScreen(
                 activity = activity,
@@ -189,6 +191,7 @@ fun SecureLockNavHost(
             PermissionsManagerScreen(
                 onBack = { navController.popBackStack() }
             )
+        }
         }
     }
 }

@@ -27,7 +27,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
@@ -68,8 +67,10 @@ import com.securelock.ai.security.PermissionHelper
 import com.securelock.ai.security.SecureStorageRepository
 import com.securelock.ai.service.AppLockServiceController
 import com.securelock.ai.service.AppLockSessionManager
+import com.securelock.ai.ui.components.NeuglassBackdrop
 import com.securelock.ai.ui.components.PatternLockPad
 import com.securelock.ai.ui.components.PinKeypad
+import com.securelock.ai.ui.components.neuglassSurface
 import com.securelock.ai.ui.theme.CrimsonAlert
 import com.securelock.ai.ui.theme.SecureLockTheme
 import java.io.File
@@ -278,22 +279,28 @@ private fun UnifiedAppLockOverlay(
 
     val configuredPinLen = remember { repository.configuredPinLength().coerceIn(4, 12) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(bg)
-            .safeDrawingPadding()
-            .padding(horizontal = 24.dp, vertical = 20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Surface(
-                shape = CircleShape,
-                color = surfaceVariant,
-                modifier = Modifier.size(76.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
+    NeuglassBackdrop {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .safeDrawingPadding()
+                .padding(horizontal = 24.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(80.dp)
+                        .neuglassSurface(
+                            cornerRadius = 40.dp,
+                            surfaceColor = surfaceVariant,
+                            accentColor = accent,
+                            isCircular = true,
+                            elevationScale = 1.05f
+                        )
+                ) {
                     Icon(
                         imageVector = Icons.Default.Lock,
                         contentDescription = null,
@@ -301,7 +308,6 @@ private fun UnifiedAppLockOverlay(
                         modifier = Modifier.size(38.dp)
                     )
                 }
-            }
 
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -459,11 +465,12 @@ private fun UnifiedAppLockOverlay(
             }
         }
 
-        TextButton(onClick = onCancelHome) {
-            Text(
-                text = "Return to Home Screen",
-                color = accent
-            )
+            TextButton(onClick = onCancelHome) {
+                Text(
+                    text = "Return to Home Screen",
+                    color = accent
+                )
+            }
         }
     }
 

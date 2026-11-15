@@ -35,7 +35,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -49,6 +48,8 @@ import com.securelock.ai.security.SecureStorageRepository
 import com.securelock.ai.security.VaultRepository
 import com.securelock.ai.ui.components.SecureTopBar
 import com.securelock.ai.ui.components.WhiteSecurityCard
+import com.securelock.ai.ui.components.neuglassInset
+import com.securelock.ai.ui.components.neuglassSurface
 import com.securelock.ai.ui.navigation.Routes
 import com.securelock.ai.ui.theme.AmberWarn
 import com.securelock.ai.ui.theme.CrimsonAlert
@@ -159,17 +160,33 @@ fun DashboardScreen(
     )
 
     Scaffold(
-        containerColor = bg,
+        containerColor = Color.Transparent,
         topBar = {
             SecureTopBar(
                 title = "SecureLock AI",
                 subtitle = "Offline Privacy & Vault Suite",
                 actions = {
-                    IconButton(onClick = { onNavigate(Routes.PERMISSIONS) }) {
-                        Icon(Icons.Default.Security, contentDescription = "Permissions Manager")
-                    }
-                    IconButton(onClick = { onNavigate(Routes.SETTINGS) }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(end = 8.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .neuglassSurface(cornerRadius = 20.dp, isCircular = true, elevationScale = 0.7f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            IconButton(onClick = { onNavigate(Routes.PERMISSIONS) }) {
+                                Icon(Icons.Default.Security, contentDescription = "Permissions Manager")
+                            }
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .neuglassSurface(cornerRadius = 20.dp, isCircular = true, elevationScale = 0.7f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            IconButton(onClick = { onNavigate(Routes.SETTINGS) }) {
+                                Icon(Icons.Default.Settings, contentDescription = "Settings")
+                            }
+                        }
                     }
                 }
             )
@@ -178,17 +195,24 @@ fun DashboardScreen(
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 160.dp),
             contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Surface(
-                    shape = RoundedCornerShape(22.dp),
-                    color = surfaceVariant,
-                    modifier = Modifier.fillMaxWidth()
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color.Transparent,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .neuglassSurface(
+                            cornerRadius = 24.dp,
+                            surfaceColor = surfaceVariant,
+                            accentColor = secondary,
+                            elevationScale = 1.05f
+                        )
                 ) {
                     Row(
                         modifier = Modifier
@@ -198,26 +222,26 @@ fun DashboardScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = primary.copy(alpha = 0.2f),
-                                modifier = Modifier.size(48.dp)
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(50.dp)
+                                    .neuglassInset(cornerRadius = 15.dp, tintColor = primary.copy(alpha = 0.22f))
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Default.Shield,
-                                        contentDescription = null,
-                                        tint = secondary,
-                                        modifier = Modifier.size(28.dp)
-                                    )
-                                }
+                                Icon(
+                                    imageVector = Icons.Default.Shield,
+                                    contentDescription = null,
+                                    tint = secondary,
+                                    modifier = Modifier.size(28.dp)
+                                )
                             }
                             Spacer(modifier = Modifier.width(14.dp))
                             Column {
                                 Text(
                                     text = "Keystore Encryption Active",
                                     style = MaterialTheme.typography.titleMedium,
-                                    color = fg
+                                    color = fg,
+                                    fontWeight = FontWeight.Bold
                                 )
                                 Text(
                                     text = "${settings.protectedPackages.size} apps · ${vaultItems.size} vault files · ${stats.failedAttempts} failed tries",
@@ -226,8 +250,19 @@ fun DashboardScreen(
                                 )
                             }
                         }
-                        TextButton(onClick = onLockNow) {
-                            Text("Lock", color = secondary, fontWeight = FontWeight.SemiBold)
+                        Surface(
+                            onClick = onLockNow,
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color.Transparent,
+                            modifier = Modifier.neuglassInset(cornerRadius = 14.dp)
+                        ) {
+                            Text(
+                                text = "Lock",
+                                color = secondary,
+                                fontWeight = FontWeight.SemiBold,
+                                style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                            )
                         }
                     }
                 }
@@ -243,19 +278,18 @@ fun DashboardScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = item.accent.copy(alpha = 0.14f),
-                                modifier = Modifier.size(40.dp)
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .neuglassInset(cornerRadius = 13.dp, tintColor = item.accent.copy(alpha = 0.16f))
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = item.icon,
-                                        contentDescription = null,
-                                        tint = item.accent,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
+                                Icon(
+                                    imageVector = item.icon,
+                                    contentDescription = null,
+                                    tint = item.accent,
+                                    modifier = Modifier.size(22.dp)
+                                )
                             }
                             Text(
                                 text = item.metric,

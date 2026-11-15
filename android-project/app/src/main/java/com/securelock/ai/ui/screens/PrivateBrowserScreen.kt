@@ -12,14 +12,11 @@ import android.webkit.WebSettings
 import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -63,10 +60,10 @@ import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import com.securelock.ai.security.SecureStorageRepository
 import com.securelock.ai.ui.components.SecureTopBar
+import com.securelock.ai.ui.components.neuglassSurface
 import com.securelock.ai.ui.theme.AmberWarn
 import com.securelock.ai.ui.theme.CrispWhite
 import com.securelock.ai.ui.theme.DeepNavy
-import com.securelock.ai.ui.theme.MidnightBlue
 import com.securelock.ai.ui.theme.SkyAccent
 import java.net.URLEncoder
 import java.util.UUID
@@ -176,7 +173,7 @@ fun PrivateBrowserScreen(
     }
 
     Scaffold(
-        containerColor = DeepNavy,
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             SecureTopBar(
                 title = "Private Browser",
@@ -204,8 +201,9 @@ fun PrivateBrowserScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(MidnightBlue)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .neuglassSurface(cornerRadius = 18.dp, elevationScale = 0.8f)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
@@ -238,7 +236,6 @@ fun PrivateBrowserScreen(
             LazyRow(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(DeepNavy)
                     .padding(horizontal = 12.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -289,7 +286,13 @@ fun PrivateBrowserScreen(
                     .weight(1f)
             )
 
-            Surface(color = MidnightBlue, modifier = Modifier.fillMaxWidth()) {
+            Surface(
+                color = androidx.compose.ui.graphics.Color.Transparent,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .neuglassSurface(cornerRadius = 18.dp, elevationScale = 0.85f)
+            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -297,13 +300,13 @@ fun PrivateBrowserScreen(
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
                     IconButton(onClick = { if (webView.canGoBack()) webView.goBack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = CrispWhite)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onSurface)
                     }
                     IconButton(onClick = { if (webView.canGoForward()) webView.goForward() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Forward", tint = CrispWhite)
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Forward", tint = MaterialTheme.colorScheme.onSurface)
                     }
                     IconButton(onClick = { webView.reload() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Reload", tint = CrispWhite)
+                        Icon(Icons.Default.Refresh, contentDescription = "Reload", tint = MaterialTheme.colorScheme.onSurface)
                     }
                 }
             }

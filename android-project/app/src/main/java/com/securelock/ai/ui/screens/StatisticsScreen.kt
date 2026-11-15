@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,10 +30,8 @@ import com.securelock.ai.security.SecureStorageRepository
 import com.securelock.ai.ui.components.SecureTopBar
 import com.securelock.ai.ui.components.WhiteSecurityCard
 import com.securelock.ai.ui.theme.CrimsonAlert
-import com.securelock.ai.ui.theme.DeepNavy
 import com.securelock.ai.ui.theme.ElectricBlue
 import com.securelock.ai.ui.theme.EmeraldSafe
-import com.securelock.ai.ui.theme.SlateText
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -54,7 +51,7 @@ fun StatisticsScreen(
     }
 
     Scaffold(
-        containerColor = DeepNavy,
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             SecureTopBar(
                 title = "Security Statistics",
@@ -77,21 +74,21 @@ fun StatisticsScreen(
                 ) {
                     WhiteSecurityCard(modifier = Modifier.weight(1f)) {
                         Column {
-                            Text("Protected Apps", style = MaterialTheme.typography.labelMedium, color = SlateText)
+                            Text("Protected Apps", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
                                 text = settings.protectedPackages.size.toString(),
                                 style = MaterialTheme.typography.headlineMedium,
-                                color = ElectricBlue
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
                     }
                     WhiteSecurityCard(modifier = Modifier.weight(1f)) {
                         Column {
-                            Text("Total Attempts", style = MaterialTheme.typography.labelMedium, color = SlateText)
+                            Text("Total Attempts", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
                                 text = stats.totalAttempts.toString(),
                                 style = MaterialTheme.typography.headlineMedium,
-                                color = DeepNavy
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                         }
                     }
@@ -105,7 +102,7 @@ fun StatisticsScreen(
                 ) {
                     WhiteSecurityCard(modifier = Modifier.weight(1f)) {
                         Column {
-                            Text("Successful Unlocks", style = MaterialTheme.typography.labelMedium, color = SlateText)
+                            Text("Successful Unlocks", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
                                 text = stats.successfulUnlocks.toString(),
                                 style = MaterialTheme.typography.headlineMedium,
@@ -115,7 +112,7 @@ fun StatisticsScreen(
                     }
                     WhiteSecurityCard(modifier = Modifier.weight(1f)) {
                         Column {
-                            Text("Failed Attempts", style = MaterialTheme.typography.labelMedium, color = SlateText)
+                            Text("Failed Attempts", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
                                 text = stats.failedAttempts.toString(),
                                 style = MaterialTheme.typography.headlineMedium,
@@ -137,7 +134,7 @@ fun StatisticsScreen(
                         Text(
                             text = "Last activity: $lastActivityText",
                             style = MaterialTheme.typography.labelMedium,
-                            color = SlateText
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         WeeklyActivityBarChart(history = stats.dailyHistory)
                         Row(
@@ -145,7 +142,7 @@ fun StatisticsScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             stats.dailyHistory.forEach { day ->
-                                Text(day.dayLabel, style = MaterialTheme.typography.labelMedium, color = SlateText)
+                                Text(day.dayLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
@@ -176,7 +173,7 @@ fun StatisticsScreen(
                         Text(
                             text = "No security events logged yet.",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = SlateText
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -193,9 +190,9 @@ fun StatisticsScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(event.title, style = MaterialTheme.typography.titleMedium)
-                                Text(timeStr, style = MaterialTheme.typography.labelMedium, color = SlateText)
+                                Text(timeStr, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            Text(event.detail, style = MaterialTheme.typography.bodyMedium, color = SlateText)
+                            Text(event.detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }

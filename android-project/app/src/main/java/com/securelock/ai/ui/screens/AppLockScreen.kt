@@ -175,7 +175,7 @@ fun AppLockScreen(
     }.joinToString(" · ").ifEmpty { "Set Pattern or PIN" }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             SecureTopBar(
                 title = "App Lock",

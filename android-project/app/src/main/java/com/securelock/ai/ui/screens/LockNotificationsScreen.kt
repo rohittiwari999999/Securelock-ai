@@ -29,10 +29,8 @@ import com.securelock.ai.security.PermissionHelper
 import com.securelock.ai.security.SecureStorageRepository
 import com.securelock.ai.ui.components.SecureTopBar
 import com.securelock.ai.ui.components.WhiteSecurityCard
-import com.securelock.ai.ui.theme.DeepNavy
 import com.securelock.ai.ui.theme.ElectricBlue
 import com.securelock.ai.ui.theme.EmeraldSafe
-import com.securelock.ai.ui.theme.SlateText
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -50,7 +48,7 @@ fun LockNotificationsScreen(
     }
 
     Scaffold(
-        containerColor = DeepNavy,
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             SecureTopBar(
                 title = "Lock Notifications",
@@ -81,7 +79,7 @@ fun LockNotificationsScreen(
                                 "Grant Notification Access in Android Settings so SecureLock AI can hide sensitive message previews for protected apps. Notification content never leaves this device."
                             },
                             style = MaterialTheme.typography.bodyMedium,
-                            color = if (listenerGranted) EmeraldSafe else SlateText
+                            color = if (listenerGranted) EmeraldSafe else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Button(
                             onClick = {
@@ -108,7 +106,7 @@ fun LockNotificationsScreen(
                                 Text(
                                     "Redact previews from protected apps",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = SlateText
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             Switch(
@@ -129,7 +127,7 @@ fun LockNotificationsScreen(
                                 Text(
                                     "Hide notifications for every app in App Lock",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = SlateText
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             Switch(
@@ -155,7 +153,7 @@ fun LockNotificationsScreen(
                         Text(
                             text = "No protected notifications have been masked yet.",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = SlateText
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -172,10 +170,10 @@ fun LockNotificationsScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(item.appName, style = MaterialTheme.typography.titleMedium)
-                                Text(timeStr, style = MaterialTheme.typography.labelMedium, color = SlateText)
+                                Text(timeStr, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Text(item.maskedTitle, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                            Text(item.maskedBody, style = MaterialTheme.typography.bodyMedium, color = SlateText)
+                            Text(item.maskedBody, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }

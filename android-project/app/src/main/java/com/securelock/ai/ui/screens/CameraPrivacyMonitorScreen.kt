@@ -48,10 +48,8 @@ import com.securelock.ai.security.PermissionHelper
 import com.securelock.ai.ui.components.SecureTopBar
 import com.securelock.ai.ui.components.WhiteSecurityCard
 import com.securelock.ai.ui.theme.CrimsonAlert
-import com.securelock.ai.ui.theme.DeepNavy
 import com.securelock.ai.ui.theme.ElectricBlue
 import com.securelock.ai.ui.theme.EmeraldSafe
-import com.securelock.ai.ui.theme.SlateText
 
 @Composable
 fun CameraPrivacyMonitorScreen(
@@ -92,7 +90,7 @@ fun CameraPrivacyMonitorScreen(
     }
 
     Scaffold(
-        containerColor = DeepNavy,
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             SecureTopBar(
                 title = "Camera Privacy Monitor",
@@ -123,7 +121,7 @@ fun CameraPrivacyMonitorScreen(
                                 "Foreground Camera Permission: Denied. SecureLock AI cannot access your camera."
                             },
                             style = MaterialTheme.typography.bodyMedium,
-                            color = if (cameraGranted) EmeraldSafe else SlateText
+                            color = if (cameraGranted) EmeraldSafe else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
                             text = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -132,7 +130,7 @@ fun CameraPrivacyMonitorScreen(
                                 "Android CameraManager availability callbacks report live camera hardware availability."
                             },
                             style = MaterialTheme.typography.bodyMedium,
-                            color = SlateText
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -172,7 +170,7 @@ fun CameraPrivacyMonitorScreen(
                             Text(
                                 text = "Observe the Android system green camera indicator in the status bar while preview is open.",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = SlateText
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             AndroidView(
                                 modifier = Modifier

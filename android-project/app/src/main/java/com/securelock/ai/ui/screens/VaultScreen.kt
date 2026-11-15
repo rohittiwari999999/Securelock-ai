@@ -234,7 +234,7 @@ fun VaultScreen(
         }
 
         Scaffold(
-            containerColor = MaterialTheme.colorScheme.background,
+            containerColor = androidx.compose.ui.graphics.Color.Transparent,
             topBar = {
                 SecureTopBar(title = "Secret Gallery Vault", subtitle = "Authentication required", onBack = onBack)
             }
@@ -373,7 +373,7 @@ fun VaultScreen(
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             SecureTopBar(
                 title = "Secret Gallery Vault",

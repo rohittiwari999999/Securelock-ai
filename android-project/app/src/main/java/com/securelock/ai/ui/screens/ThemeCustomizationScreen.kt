@@ -62,7 +62,7 @@ fun ThemeCustomizationScreen(
     )
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = Color.Transparent,
         topBar = {
             SecureTopBar(
                 title = "Theme Customization",

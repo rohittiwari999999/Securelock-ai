@@ -72,7 +72,10 @@ import com.securelock.ai.security.SecretDateUnlockEvaluator
 import com.securelock.ai.security.SecretTapOutcome
 import com.securelock.ai.security.SecretTapState
 import com.securelock.ai.security.SecureStorageRepository
+import com.securelock.ai.ui.components.NeuglassBackdrop
 import com.securelock.ai.ui.components.PatternLockPad
+import com.securelock.ai.ui.components.neuglassInset
+import com.securelock.ai.ui.components.neuglassSurface
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -214,40 +217,69 @@ fun CalendarLaunchScreen(
     }
 
     MaterialTheme(colorScheme = if (isDark) CalendarDarkColors else CalendarLightColors) {
-        Scaffold(
-            modifier = Modifier.safeDrawingPadding(),
-            containerColor = MaterialTheme.colorScheme.background,
-            topBar = {
-                TopAppBar(
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background,
-                        titleContentColor = MaterialTheme.colorScheme.onBackground
-                    ),
-                    title = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.CalendarToday,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = "Calendar",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.SemiBold
-                            )
+        NeuglassBackdrop(
+            baseBackground = MaterialTheme.colorScheme.background,
+            primaryGlow = MaterialTheme.colorScheme.primary,
+            secondaryGlow = Color(0xFF38BDF8)
+        ) {
+            Scaffold(
+                modifier = Modifier.safeDrawingPadding(),
+                containerColor = Color.Transparent,
+                topBar = {
+                    TopAppBar(
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent,
+                            titleContentColor = MaterialTheme.colorScheme.onBackground
+                        ),
+                        title = {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .neuglassSurface(
+                                            cornerRadius = 12.dp,
+                                            elevationScale = 0.75f
+                                        )
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.CalendarToday,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Text(
+                                    text = "Calendar",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        },
+                        actions = {
+                            Surface(
+                                onClick = { jumpToToday() },
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color.Transparent,
+                                modifier = Modifier
+                                    .padding(end = 8.dp)
+                                    .neuglassSurface(cornerRadius = 14.dp, elevationScale = 0.7f)
+                            ) {
+                                Text(
+                                    text = "Today",
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                )
+                            }
                         }
-                    },
-                    actions = {
-                        TextButton(onClick = { jumpToToday() }) {
-                            Text("Today", fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                )
-            }
-        ) { innerPadding ->
+                    )
+                }
+            ) { innerPadding ->
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -259,9 +291,12 @@ fun CalendarLaunchScreen(
                 // Visual First-Time Onboarding Card (shown ONLY before initial AppLock setup is completed)
                 if (!appLockConfigured) {
                     Card(
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer
+                        shape = RoundedCornerShape(22.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                        modifier = Modifier.neuglassSurface(
+                            cornerRadius = 22.dp,
+                            surfaceColor = MaterialTheme.colorScheme.primaryContainer,
+                            elevationScale = 0.9f
                         )
                     ) {
                         Column(
@@ -315,8 +350,9 @@ fun CalendarLaunchScreen(
 
                 Card(
                     shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                    modifier = Modifier.neuglassSurface(cornerRadius = 24.dp, elevationScale = 1.0f)
                 ) {
                     Column(
                         modifier = Modifier
@@ -336,18 +372,32 @@ fun CalendarLaunchScreen(
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                IconButton(onClick = { changeMonth(-1) }) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                                        contentDescription = "Previous month"
-                                    )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .neuglassSurface(cornerRadius = 19.dp, isCircular = true, elevationScale = 0.65f)
+                                ) {
+                                    IconButton(onClick = { changeMonth(-1) }) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                            contentDescription = "Previous month"
+                                        )
+                                    }
                                 }
-                                IconButton(onClick = { changeMonth(1) }) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                        contentDescription = "Next month"
-                                    )
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .neuglassSurface(cornerRadius = 19.dp, isCircular = true, elevationScale = 0.65f)
+                                ) {
+                                    IconButton(onClick = { changeMonth(1) }) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                            contentDescription = "Next month"
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -472,9 +522,10 @@ fun CalendarLaunchScreen(
 
                 // Standalone Day Summary / Agenda Card
                 Card(
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    shape = RoundedCornerShape(22.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                    modifier = Modifier.neuglassSurface(cornerRadius = 22.dp, elevationScale = 0.95f)
                 ) {
                     Column(
                         modifier = Modifier
@@ -489,10 +540,7 @@ fun CalendarLaunchScreen(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant
-                            ) {
+                            Box(modifier = Modifier.neuglassInset(cornerRadius = 10.dp)) {
                                 Text(
                                     text = selectedSummary.second,
                                     style = MaterialTheme.typography.labelMedium,
@@ -500,10 +548,7 @@ fun CalendarLaunchScreen(
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                                 )
                             }
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant
-                            ) {
+                            Box(modifier = Modifier.neuglassInset(cornerRadius = 10.dp)) {
                                 Text(
                                     text = selectedSummary.third,
                                     style = MaterialTheme.typography.labelMedium,
@@ -532,6 +577,7 @@ fun CalendarLaunchScreen(
                     }
                 }
             }
+        }
         }
 
         // Step 2: Direct App Lock Setup Window (Pattern, PIN & Fingerprint)

@@ -1,11 +1,12 @@
 package com.securelock.ai.ui.components
 
-import androidx.compose.foundation.BorderStroke
+import android.os.Build
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -25,6 +26,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,21 +44,28 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import android.os.Build
 import com.securelock.ai.R
 import com.securelock.ai.data.CardStyleMode
 import com.securelock.ai.security.PermissionHelper
@@ -67,6 +76,214 @@ import com.securelock.ai.ui.theme.LocalCardStyleMode
 import com.securelock.ai.ui.theme.LocalThemePalette
 import kotlin.math.hypot
 
+/**
+ * Continuous atmospheric Neuglass backdrop with soft ambient radial orbs
+ * so frosted glass cards and neumorphic contours show crisp depth across all 8 themes.
+ */
+@Composable
+fun NeuglassBackdrop(
+    modifier: Modifier = Modifier,
+    baseBackground: Color = MaterialTheme.colorScheme.background,
+    primaryGlow: Color = MaterialTheme.colorScheme.primary,
+    secondaryGlow: Color = MaterialTheme.colorScheme.secondary,
+    content: @Composable BoxScope.() -> Unit
+) {
+    val isDarkBg = baseBackground.luminance() < 0.45f
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .drawBehind {
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        colors = if (isDarkBg) {
+                            listOf(
+                                baseBackground,
+                                Color(
+                                    red = (baseBackground.red + primaryGlow.red * 0.10f).coerceIn(0f, 1f),
+                                    green = (baseBackground.green + primaryGlow.green * 0.10f).coerceIn(0f, 1f),
+                                    blue = (baseBackground.blue + primaryGlow.blue * 0.14f).coerceIn(0f, 1f),
+                                    alpha = 1f
+                                ),
+                                baseBackground
+                            )
+                        } else {
+                            listOf(
+                                Color(0xFFE9EFF8),
+                                Color(0xFFF3F6FC),
+                                Color(0xFFE4ECF7)
+                            )
+                        }
+                    )
+                )
+
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            primaryGlow.copy(alpha = if (isDarkBg) 0.24f else 0.16f),
+                            Color.Transparent
+                        ),
+                        center = Offset(size.width * 0.14f, size.height * 0.12f),
+                        radius = size.maxDimension * 0.52f
+                    ),
+                    radius = size.maxDimension * 0.52f,
+                    center = Offset(size.width * 0.14f, size.height * 0.12f)
+                )
+
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            secondaryGlow.copy(alpha = if (isDarkBg) 0.18f else 0.14f),
+                            Color.Transparent
+                        ),
+                        center = Offset(size.width * 0.88f, size.height * 0.78f),
+                        radius = size.maxDimension * 0.56f
+                    ),
+                    radius = size.maxDimension * 0.56f,
+                    center = Offset(size.width * 0.88f, size.height * 0.78f)
+                )
+            },
+        content = content
+    )
+}
+
+/**
+ * Combined Neumorphism + Glassmorphism surface modifier:
+ * dual soft outer light/dark extrusion + frosted translucent gradient fill + specular diagonal rim.
+ */
+fun Modifier.neuglassSurface(
+    cornerRadius: Dp = 22.dp,
+    surfaceColor: Color? = null,
+    accentColor: Color? = null,
+    isCircular: Boolean = false,
+    elevationScale: Float = 1f
+): Modifier = composed {
+    val resolvedSurface = surfaceColor ?: MaterialTheme.colorScheme.surface
+    val resolvedAccent = accentColor ?: MaterialTheme.colorScheme.secondary
+    val isDarkSurface = resolvedSurface.luminance() < 0.45f
+    val isDarkCanvas = MaterialTheme.colorScheme.background.luminance() < 0.45f
+
+    this.drawBehind {
+        val radiusPx = if (isCircular) size.minDimension / 2f else cornerRadius.toPx()
+        val cr = CornerRadius(radiusPx, radiusPx)
+        val liftOffset = (4.dp.toPx() * elevationScale).coerceAtLeast(1f)
+        val shadowOffset = (5.dp.toPx() * elevationScale).coerceAtLeast(1.5f)
+
+        // 1. Neumorphic bottom-right ambient shadow
+        drawRoundRect(
+            color = Color.Black.copy(alpha = if (isDarkCanvas) 0.42f else 0.11f),
+            topLeft = Offset(shadowOffset, shadowOffset),
+            size = size,
+            cornerRadius = cr
+        )
+        drawRoundRect(
+            color = Color.Black.copy(alpha = if (isDarkCanvas) 0.22f else 0.06f),
+            topLeft = Offset(shadowOffset * 1.6f, shadowOffset * 1.6f),
+            size = size,
+            cornerRadius = cr
+        )
+
+        // 2. Neumorphic top-left light extrusion
+        drawRoundRect(
+            color = Color.White.copy(alpha = if (isDarkCanvas) 0.09f else 0.85f),
+            topLeft = Offset(-liftOffset, -liftOffset),
+            size = size,
+            cornerRadius = cr
+        )
+
+        // 3. Glassmorphic frosted translucent body
+        val topAlpha = if (isDarkSurface) 0.72f else 0.86f
+        val bottomAlpha = if (isDarkSurface) 0.52f else 0.70f
+        drawRoundRect(
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    resolvedSurface.copy(alpha = topAlpha),
+                    resolvedSurface.copy(alpha = bottomAlpha)
+                ),
+                start = Offset.Zero,
+                end = Offset(size.width, size.height)
+            ),
+            topLeft = Offset.Zero,
+            size = size,
+            cornerRadius = cr
+        )
+
+        // 4. Diagonal specular glass rim
+        drawRoundRect(
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    Color.White.copy(alpha = if (isDarkSurface) 0.34f else 0.92f),
+                    resolvedAccent.copy(alpha = if (isDarkSurface) 0.22f else 0.18f),
+                    Color.White.copy(alpha = if (isDarkSurface) 0.06f else 0.25f)
+                ),
+                start = Offset.Zero,
+                end = Offset(size.width, size.height)
+            ),
+            topLeft = Offset.Zero,
+            size = size,
+            cornerRadius = cr,
+            style = Stroke(width = 1.2.dp.toPx())
+        )
+    }
+}
+
+/**
+ * Recessed Neumorphic + Glassmorphic inset container (wells, pattern pads, chip tracks).
+ */
+fun Modifier.neuglassInset(
+    cornerRadius: Dp = 16.dp,
+    tintColor: Color? = null
+): Modifier = composed {
+    val base = tintColor ?: MaterialTheme.colorScheme.surfaceVariant
+    val isDark = base.luminance() < 0.45f
+    val accent = MaterialTheme.colorScheme.primary
+
+    this.drawBehind {
+        val radiusPx = cornerRadius.toPx()
+        val cr = CornerRadius(radiusPx, radiusPx)
+
+        // Recessed inner fill
+        drawRoundRect(
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    base.copy(alpha = if (isDark) 0.55f else 0.75f),
+                    base.copy(alpha = if (isDark) 0.36f else 0.55f)
+                ),
+                start = Offset.Zero,
+                end = Offset(size.width, size.height)
+            ),
+            topLeft = Offset.Zero,
+            size = size,
+            cornerRadius = cr
+        )
+
+        // Subtle inset top-left shadow & bottom-right catch light
+        drawRoundRect(
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    Color.Black.copy(alpha = if (isDark) 0.36f else 0.10f),
+                    Color.Transparent,
+                    Color.White.copy(alpha = if (isDark) 0.12f else 0.70f)
+                ),
+                start = Offset.Zero,
+                end = Offset(size.width, size.height)
+            ),
+            topLeft = Offset.Zero,
+            size = size,
+            cornerRadius = cr,
+            style = Stroke(width = 1.4.dp.toPx())
+        )
+
+        // Subtle inner accent edge
+        drawRoundRect(
+            color = accent.copy(alpha = 0.08f),
+            topLeft = Offset(1.dp.toPx(), 1.dp.toPx()),
+            size = Size((size.width - 2.dp.toPx()).coerceAtLeast(0f), (size.height - 2.dp.toPx()).coerceAtLeast(0f)),
+            cornerRadius = cr,
+            style = Stroke(width = 0.75.dp.toPx())
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SecureTopBar(
@@ -75,45 +292,76 @@ fun SecureTopBar(
     onBack: (() -> Unit)? = null,
     actions: @Composable () -> Unit = {}
 ) {
-    val bg = MaterialTheme.colorScheme.background
     val fg = MaterialTheme.colorScheme.onBackground
     val accent = MaterialTheme.colorScheme.secondary
+    val surface = MaterialTheme.colorScheme.surface
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.45f
 
-    TopAppBar(
-        colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = bg,
-            titleContentColor = fg,
-            navigationIconContentColor = fg,
-            actionIconContentColor = fg
-        ),
-        navigationIcon = {
-            if (onBack != null) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back"
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        surface.copy(alpha = if (isDark) 0.55f else 0.65f),
+                        surface.copy(alpha = if (isDark) 0.25f else 0.35f)
                     )
-                }
-            }
-        },
-        title = {
-            Column {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = fg
                 )
-                if (subtitle != null) {
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = accent
-                    )
+            )
+    ) {
+        TopAppBar(
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = Color.Transparent,
+                titleContentColor = fg,
+                navigationIconContentColor = fg,
+                actionIconContentColor = fg
+            ),
+            navigationIcon = {
+                if (onBack != null) {
+                    Box(
+                        modifier = Modifier
+                            .padding(start = 8.dp)
+                            .size(40.dp)
+                            .neuglassSurface(
+                                cornerRadius = 20.dp,
+                                isCircular = true,
+                                elevationScale = 0.7f
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back"
+                            )
+                        }
+                    }
                 }
-            }
-        },
-        actions = { actions() }
-    )
+            },
+            title = {
+                Column(modifier = Modifier.padding(start = if (onBack != null) 4.dp else 0.dp)) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = fg,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (subtitle != null) {
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = accent
+                        )
+                    }
+                }
+            },
+            actions = { actions() }
+        )
+        HorizontalDivider(
+            thickness = 0.8.dp,
+            color = Color.White.copy(alpha = if (isDark) 0.10f else 0.55f)
+        )
+    }
 }
 
 @Composable
@@ -123,34 +371,38 @@ fun WhiteSecurityCard(
     content: @Composable () -> Unit
 ) {
     val cardStyle = LocalCardStyleMode.current
-    val shape = when (cardStyle) {
-        CardStyleMode.ELEVATED -> RoundedCornerShape(20.dp)
-        CardStyleMode.OUTLINED -> RoundedCornerShape(18.dp)
-        CardStyleMode.COMPACT -> RoundedCornerShape(14.dp)
+    val corner = when (cardStyle) {
+        CardStyleMode.ELEVATED -> 22.dp
+        CardStyleMode.OUTLINED -> 20.dp
+        CardStyleMode.COMPACT -> 16.dp
     }
-    val elevation = when (cardStyle) {
-        CardStyleMode.ELEVATED -> CardDefaults.cardElevation(defaultElevation = 2.dp)
-        CardStyleMode.OUTLINED -> CardDefaults.cardElevation(defaultElevation = 0.dp)
-        CardStyleMode.COMPACT -> CardDefaults.cardElevation(defaultElevation = 1.dp)
+    val shape = RoundedCornerShape(corner)
+    val elevationScale = when (cardStyle) {
+        CardStyleMode.ELEVATED -> 1.0f
+        CardStyleMode.OUTLINED -> 0.55f
+        CardStyleMode.COMPACT -> 0.8f
     }
-    val border = if (cardStyle == CardStyleMode.OUTLINED) {
-        BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-    } else null
     val pad = if (cardStyle == CardStyleMode.COMPACT) 12.dp else 16.dp
 
     val cardColors = CardDefaults.cardColors(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onSurface
     )
+
+    val neuglassModifier = modifier
+        .fillMaxWidth()
+        .neuglassSurface(
+            cornerRadius = corner,
+            elevationScale = elevationScale
+        )
 
     if (onClick != null) {
         Card(
             onClick = onClick,
-            modifier = modifier.fillMaxWidth(),
+            modifier = neuglassModifier,
             shape = shape,
             colors = cardColors,
-            elevation = elevation,
-            border = border
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
             Box(modifier = Modifier.padding(pad)) {
                 content()
@@ -158,11 +410,10 @@ fun WhiteSecurityCard(
         }
     } else {
         Card(
-            modifier = modifier.fillMaxWidth(),
+            modifier = neuglassModifier,
             shape = shape,
             colors = cardColors,
-            elevation = elevation,
-            border = border
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
             Box(modifier = Modifier.padding(pad)) {
                 content()
@@ -189,7 +440,12 @@ fun PinKeypad(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier
+                .neuglassInset(cornerRadius = 20.dp)
+                .padding(horizontal = 16.dp, vertical = 10.dp)
+        ) {
             repeat(maxLength.coerceAtMost(12)) { index ->
                 val filled = index < enteredLength
                 Box(
@@ -228,9 +484,17 @@ fun PinKeypad(
             if (onBiometricClick != null && biometricIcon != null) {
                 Surface(
                     onClick = onBiometricClick,
-                    modifier = Modifier.size(68.dp),
+                    modifier = Modifier
+                        .size(68.dp)
+                        .neuglassSurface(
+                            cornerRadius = 34.dp,
+                            surfaceColor = primary.copy(alpha = 0.28f),
+                            accentColor = accent,
+                            isCircular = true,
+                            elevationScale = 0.9f
+                        ),
                     shape = CircleShape,
-                    color = primary.copy(alpha = 0.25f)
+                    color = androidx.compose.ui.graphics.Color.Transparent
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
@@ -258,9 +522,15 @@ fun PinKeypad(
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     onBackspace()
                 },
-                modifier = Modifier.size(68.dp),
+                modifier = Modifier
+                    .size(68.dp)
+                    .neuglassSurface(
+                        cornerRadius = 34.dp,
+                        isCircular = true,
+                        elevationScale = 0.85f
+                    ),
                 shape = CircleShape,
-                color = fg.copy(alpha = 0.1f)
+                color = androidx.compose.ui.graphics.Color.Transparent
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
@@ -282,9 +552,15 @@ private fun PinKeyButton(
     val fg = MaterialTheme.colorScheme.onBackground
     Surface(
         onClick = onClick,
-        modifier = Modifier.size(68.dp),
+        modifier = Modifier
+            .size(68.dp)
+            .neuglassSurface(
+                cornerRadius = 34.dp,
+                isCircular = true,
+                elevationScale = 0.95f
+            ),
         shape = CircleShape,
-        color = fg.copy(alpha = 0.12f)
+        color = androidx.compose.ui.graphics.Color.Transparent
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
@@ -311,6 +587,8 @@ fun PatternLockPad(
     Box(
         modifier = modifier
             .size(264.dp)
+            .neuglassInset(cornerRadius = 28.dp)
+            .padding(10.dp)
             .pointerInput(Unit) {
                 detectDragGestures(
                     onDragStart = { startOffset ->

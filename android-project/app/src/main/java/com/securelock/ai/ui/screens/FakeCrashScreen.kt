@@ -56,11 +56,12 @@ import androidx.compose.ui.unit.dp
 import com.securelock.ai.data.DecoyMode
 import com.securelock.ai.data.ProtectionScreenConfig
 import com.securelock.ai.security.SecureStorageRepository
+import com.securelock.ai.ui.components.NeuglassBackdrop
 import com.securelock.ai.ui.components.SecureTopBar
 import com.securelock.ai.ui.components.WhiteSecurityCard
+import com.securelock.ai.ui.components.neuglassSurface
 import com.securelock.ai.ui.theme.CrispWhite
 import com.securelock.ai.ui.theme.DeepNavy
-import com.securelock.ai.ui.theme.SlateText
 
 @Composable
 fun FakeCrashConfigScreen(
@@ -85,7 +86,7 @@ fun FakeCrashConfigScreen(
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             SecureTopBar(
                 title = "Fake Crash / Decoy Screen",
@@ -280,19 +281,29 @@ fun AppProtectionGateScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(config.backgroundHex))
-            .safeDrawingPadding()
-            .padding(28.dp),
-        contentAlignment = Alignment.Center
+    NeuglassBackdrop(
+        accentColor = Color(config.accentHex),
+        secondaryColor = Color(config.accentHex)
     ) {
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = CrispWhite,
-            modifier = Modifier.fillMaxWidth()
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(config.backgroundHex).copy(alpha = 0.72f))
+                .safeDrawingPadding()
+                .padding(28.dp),
+            contentAlignment = Alignment.Center
         ) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = Color.Transparent,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .neuglassSurface(
+                        cornerRadius = 24.dp,
+                        surfaceColor = CrispWhite.copy(alpha = 0.92f),
+                        accentColor = Color(config.accentHex)
+                    )
+            ) {
             Column(
                 modifier = Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -323,7 +334,7 @@ fun AppProtectionGateScreen(
                 Text(
                     text = config.message.ifBlank { config.decoyMode.defaultMessage },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = SlateText,
+                    color = DeepNavy.copy(alpha = 0.72f),
                     textAlign = TextAlign.Center
                 )
 
@@ -352,4 +363,5 @@ fun AppProtectionGateScreen(
             }
         }
     }
+}
 }

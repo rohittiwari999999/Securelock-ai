@@ -9,7 +9,7 @@
 
   body {
     font-family: var(--font-body);
-    background-color: #f8fafc;
+    background-color: #e6edf7;
     color: #0a1628;
   }
 
@@ -19,5 +19,94 @@
 
   code, pre, .font-mono {
     font-family: var(--font-mono);
+  }
+}
+
+/* Neumorphism + Glassmorphism ("Neuglass") Design System */
+.neuglass-bg {
+  background-color: #e8eff9;
+  background-image:
+    radial-gradient(at 10% 8%, rgba(56, 189, 248, 0.24) 0px, transparent 46%),
+    radial-gradient(at 88% 14%, rgba(59, 130, 246, 0.2) 0px, transparent 44%),
+    radial-gradient(at 78% 86%, rgba(99, 102, 241, 0.14) 0px, transparent 48%),
+    linear-gradient(155deg, #f1f6fd 0%, #e4ecf8 52%, #dde7f5 100%);
+}
+
+.neuglass-topbar {
+  background: linear-gradient(180deg, rgba(248, 251, 255, 0.78) 0%, rgba(238, 245, 255, 0.64) 100%);
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.06);
+}
+
+.neuglass-card {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.78) 0%, rgba(241, 246, 255, 0.54) 100%);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow:
+    -8px -8px 20px rgba(255, 255, 255, 0.88),
+    10px 12px 26px rgba(15, 23, 42, 0.1),
+    inset 1px 1px 1px rgba(255, 255, 255, 0.92);
+}
+
+.neuglass-card-dark {
+  background: linear-gradient(145deg, rgba(17, 34, 64, 0.88) 0%, rgba(9, 20, 38, 0.8) 100%);
+  backdrop-filter: blur(20px) saturate(155%);
+  -webkit-backdrop-filter: blur(20px) saturate(155%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    -6px -6px 18px rgba(56, 189, 248, 0.08),
+    12px 14px 30px rgba(3, 8, 20, 0.42),
+    inset 1px 1px 1px rgba(255, 255, 255, 0.18);
+}
+
+.neuglass-inset {
+  background: linear-gradient(145deg, rgba(219, 229, 244, 0.66) 0%, rgba(248, 251, 255, 0.72) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow:
+    inset 3px 3px 8px rgba(15, 23, 42, 0.11),
+    inset -3px -3px 8px rgba(255, 255, 255, 0.88);
+}
+
+.neuglass-pill {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.84) 0%, rgba(235, 242, 252, 0.62) 100%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow:
+    -4px -4px 10px rgba(255, 255, 255, 0.82),
+    5px 6px 14px rgba(15, 23, 42, 0.09);
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+}
+
+.neuglass-pill:hover {
+  box-shadow:
+    -5px -5px 12px rgba(255, 255, 255, 0.92),
+    6px 8px 16px rgba(37, 99, 235, 0.14);
+}
+
+.neuglass-pill:active {
+  transform: scale(0.98);
+  box-shadow:
+    inset 2px 2px 5px rgba(15, 23, 42, 0.12),
+    inset -2px -2px 5px rgba(255, 255, 255, 0.8);
+}
+
+.neuglass-orb {
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transition: transform 0.14s ease, box-shadow 0.2s ease;
+}
+
+.neuglass-orb:active {
+  transform: scale(0.94);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .neuglass-pill,
+  .neuglass-orb {
+    transition: none;
   }
 }
