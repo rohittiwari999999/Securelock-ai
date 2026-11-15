@@ -2,7 +2,6 @@ package com.securelock.ai.service
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
-import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import com.securelock.ai.LockOverlayActivity
 import com.securelock.ai.SecureLockApplication
@@ -27,6 +26,12 @@ class AppLockAccessibilityService : AccessibilityService() {
         val repo = (application as SecureLockApplication).storageRepository
         val settings = repo.settings.value
 
+        AppLockSessionManager.onForegroundPackageObserved(
+            observedPackage = packageName,
+            ownPackage = this.packageName,
+            timeoutSeconds = settings.relockTimeoutSeconds
+        )
+
         val isSettingsProtected = settings.protectSettingsScreen &&
             packageName == "com.android.settings"
         val isTargetProtected = settings.protectedPackages.contains(packageName) || isSettingsProtected
@@ -35,20 +40,20 @@ class AppLockAccessibilityService : AccessibilityService() {
         if (AppLockSessionManager.isAppTemporarilyUnlocked(packageName)) return
 
         val now = System.currentTimeMillis()
-        if (packageName == lastPromptedPackage && now - lastPromptMillis < 1200L) return
-
-        // On Android 10+, launching an Activity from a background service requires
-        // SYSTEM_ALERT_WINDOW (or user interaction). We verify cleanly before launching.
-        if (!Settings.canDrawOverlays(this)) return
+        if (packageName == lastPromptedPackage && now - lastPromptMillis < 1000L) return
 
         lastPromptedPackage = packageName
         lastPromptMillis = now
 
         val intent = Intent(this, LockOverlayActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_NO_ANIMATION
+            )
             putExtra(LockOverlayActivity.EXTRA_TARGET_PACKAGE, packageName)
         }
-        startActivity(intent)
+        runCatching { startActivity(intent) }
     }
 
     override fun onInterrupt() {

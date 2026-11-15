@@ -10,6 +10,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.securelock.ai.security.SecureStorageRepository
 import com.securelock.ai.security.VaultRepository
+import com.securelock.ai.service.AppLockServiceController
 import com.securelock.ai.service.AppLockSessionManager
 
 /**
@@ -43,6 +44,7 @@ class SecureLockApplication : Application(), DefaultLifecycleObserver {
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
 
         registerReceiver(screenOffReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
+        AppLockServiceController.syncMonitorService(this, storageRepository.settings.value)
     }
 
     override fun onStop(owner: LifecycleOwner) {
@@ -61,6 +63,7 @@ class SecureLockApplication : Application(), DefaultLifecycleObserver {
 
     override fun onStart(owner: LifecycleOwner) {
         AppLockSessionManager.setInternalFlowSuspendedForPicker(false)
+        AppLockServiceController.syncMonitorService(this, storageRepository.settings.value)
         if (backgroundTimestampMillis == 0L) return
         val timeoutSeconds = storageRepository.settings.value.relockTimeoutSeconds
         val elapsedMillis = System.currentTimeMillis() - backgroundTimestampMillis

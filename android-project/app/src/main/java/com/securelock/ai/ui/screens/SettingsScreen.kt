@@ -51,6 +51,7 @@ import com.securelock.ai.data.LockMethod
 import com.securelock.ai.security.PermissionHelper
 import com.securelock.ai.security.SecretDateUnlockEvaluator
 import com.securelock.ai.security.SecureStorageRepository
+import com.securelock.ai.service.AppLockServiceController
 import com.securelock.ai.service.AppLockSessionManager
 import com.securelock.ai.ui.components.PatternLockPad
 import com.securelock.ai.ui.components.SecureTopBar
@@ -636,6 +637,12 @@ fun PermissionsManagerScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var snapshot by remember { mutableStateOf(PermissionHelper.getSnapshot(context)) }
+    val app = remember(context) { context.applicationContext as? com.securelock.ai.SecureLockApplication }
+
+    fun openPermissionSettings(intent: android.content.Intent) {
+        AppLockSessionManager.setInternalFlowSuspendedForPicker(true)
+        runCatching { context.startActivity(intent) }
+    }
 
     val cameraLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -653,6 +660,9 @@ fun PermissionsManagerScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 snapshot = PermissionHelper.getSnapshot(context)
+                app?.let {
+                    AppLockServiceController.syncMonitorService(context, it.storageRepository.settings.value)
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -681,7 +691,7 @@ fun PermissionsManagerScreen(
                     title = "Display Over Other Apps",
                     description = "Required on Android 10–16 to display the lock screen when a protected app opens.",
                     granted = snapshot.overlayGranted,
-                    onConfigure = { context.startActivity(PermissionHelper.overlaySettingsIntent(context)) }
+                    onConfigure = { openPermissionSettings(PermissionHelper.overlaySettingsIntent(context)) }
                 )
             }
             item {
@@ -689,15 +699,15 @@ fun PermissionsManagerScreen(
                     title = "Usage Access (UsageStatsManager)",
                     description = "Detects which user-selected app opened in the foreground without reading window content.",
                     granted = snapshot.usageStatsGranted,
-                    onConfigure = { context.startActivity(PermissionHelper.usageAccessSettingsIntent()) }
+                    onConfigure = { openPermissionSettings(PermissionHelper.usageAccessSettingsIntent()) }
                 )
             }
             item {
                 PermissionRowCard(
-                    title = "Accessibility Service (Optional Alternative)",
+                    title = "Accessibility Service (Instant Lock)",
                     description = "Receives TYPE_WINDOW_STATE_CHANGED only (canRetrieveWindowContent = false).",
                     granted = snapshot.accessibilityEnabled,
-                    onConfigure = { context.startActivity(PermissionHelper.accessibilitySettingsIntent()) }
+                    onConfigure = { openPermissionSettings(PermissionHelper.accessibilitySettingsIntent()) }
                 )
             }
             item {
@@ -705,7 +715,15 @@ fun PermissionsManagerScreen(
                     title = "Notification Listener (Optional)",
                     description = "Allows local-only masking of sensitive notification previews for protected apps.",
                     granted = snapshot.notificationListenerEnabled,
-                    onConfigure = { context.startActivity(PermissionHelper.notificationListenerSettingsIntent()) }
+                    onConfigure = { openPermissionSettings(PermissionHelper.notificationListenerSettingsIntent()) }
+                )
+            }
+            item {
+                PermissionRowCard(
+                    title = "Battery Optimization Unrestricted (Recommended)",
+                    description = "Prevents Android/OEM battery savers from stopping your lock monitor in the background.",
+                    granted = snapshot.ignoringBatteryOptimizations,
+                    onConfigure = { openPermissionSettings(PermissionHelper.batteryOptimizationSettingsIntent()) }
                 )
             }
             item {
@@ -720,7 +738,7 @@ fun PermissionsManagerScreen(
                 item {
                     PermissionRowCard(
                         title = "Post Notifications (Android 13+)",
-                        description = "Required if you start the optional foreground Usage Access monitor notification.",
+                        description = "Required if you start the foreground Usage Access monitor notification.",
                         granted = snapshot.postNotificationsGranted,
                         onConfigure = { notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }
                     )

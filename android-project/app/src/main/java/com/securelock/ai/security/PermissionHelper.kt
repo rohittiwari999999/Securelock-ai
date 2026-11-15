@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.os.Process
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
@@ -21,7 +22,8 @@ data class PermissionStatusSnapshot(
     val usageStatsGranted: Boolean,
     val overlayGranted: Boolean,
     val accessibilityEnabled: Boolean,
-    val notificationListenerEnabled: Boolean
+    val notificationListenerEnabled: Boolean,
+    val ignoringBatteryOptimizations: Boolean
 )
 
 /**
@@ -37,8 +39,14 @@ object PermissionHelper {
             usageStatsGranted = hasUsageStatsPermission(context),
             overlayGranted = Settings.canDrawOverlays(context),
             accessibilityEnabled = isAccessibilityServiceEnabled(context),
-            notificationListenerEnabled = isNotificationListenerEnabled(context)
+            notificationListenerEnabled = isNotificationListenerEnabled(context),
+            ignoringBatteryOptimizations = isIgnoringBatteryOptimizations(context)
         )
+    }
+
+    fun isIgnoringBatteryOptimizations(context: Context): Boolean {
+        val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return false
+        return pm.isIgnoringBatteryOptimizations(context.packageName)
     }
 
     fun hasCameraPermission(context: Context): Boolean {
@@ -80,13 +88,17 @@ object PermissionHelper {
     }
 
     fun isAccessibilityServiceEnabled(context: Context): Boolean {
-        val expectedComponent = ComponentName(context, AppLockAccessibilityService::class.java)
-            .flattenToString()
+        val comp = ComponentName(context, AppLockAccessibilityService::class.java)
+        val fullComponent = comp.flattenToString()
+        val shortComponent = comp.flattenToShortString()
         val enabledServices = Settings.Secure.getString(
             context.contentResolver,
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
         ) ?: return false
-        return enabledServices.split(':').any { it.equals(expectedComponent, ignoreCase = true) }
+        return enabledServices.split(':').any {
+            it.equals(fullComponent, ignoreCase = true) ||
+                it.equals(shortComponent, ignoreCase = true)
+        }
     }
 
     fun isNotificationListenerEnabled(context: Context): Boolean {
@@ -125,4 +137,8 @@ object PermissionHelper {
         } else {
             Intent(Settings.ACTION_SECURITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
+
+    fun batteryOptimizationSettingsIntent(): Intent =
+        Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 }

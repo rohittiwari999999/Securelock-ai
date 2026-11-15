@@ -23,6 +23,7 @@
     <!-- Optional foreground service for UsageStats polling when Accessibility is disabled (Android 14+ specialUse) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Package visibility (Android 11+): Discover user-launchable installed apps cleanly without QUERY_ALL_PACKAGES -->
     <queries>
@@ -151,6 +152,16 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <!-- Re-arm protection monitor after device reboot or app update -->
+        <receiver
+            android:name=".service.BootCompletedReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Private FileProvider strictly scoped to app-private intruder captures -->
         <provider

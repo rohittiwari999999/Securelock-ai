@@ -12,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap
 object AppLockSessionManager {
 
     private val unlockedUntilMillis = ConcurrentHashMap<String, Long>()
+    private val activeVisitUnlocked = ConcurrentHashMap.newKeySet<String>()
 
     private val _vaultUnlockedFlow = MutableStateFlow(false)
     val vaultUnlockedFlow: StateFlow<Boolean> = _vaultUnlockedFlow.asStateFlow()
@@ -69,11 +70,47 @@ object AppLockSessionManager {
     }
 
     fun markAppUnlocked(packageName: String, timeoutSeconds: Int) {
-        val graceMs = timeoutSeconds.coerceAtLeast(5) * 1000L
-        unlockedUntilMillis[packageName] = System.currentTimeMillis() + graceMs
+        if (timeoutSeconds <= 0) {
+            activeVisitUnlocked.add(packageName)
+            unlockedUntilMillis[packageName] = System.currentTimeMillis() + 600L
+        } else {
+            activeVisitUnlocked.remove(packageName)
+            unlockedUntilMillis[packageName] = System.currentTimeMillis() + timeoutSeconds * 1000L
+        }
+    }
+
+    fun onForegroundPackageObserved(
+        observedPackage: String,
+        ownPackage: String,
+        timeoutSeconds: Int
+    ) {
+        if (observedPackage == ownPackage ||
+            observedPackage == "com.android.systemui" ||
+            observedPackage == "android" ||
+            observedPackage.contains("inputmethod", ignoreCase = true)
+        ) {
+            return
+        }
+        if (timeoutSeconds <= 0 && activeVisitUnlocked.isNotEmpty()) {
+            val now = System.currentTimeMillis()
+            val iterator = activeVisitUnlocked.iterator()
+            while (iterator.hasNext()) {
+                val unlockedPkg = iterator.next()
+                if (unlockedPkg != observedPackage) {
+                    val graceUntil = unlockedUntilMillis[unlockedPkg] ?: 0L
+                    if (now > graceUntil) {
+                        iterator.remove()
+                        unlockedUntilMillis.remove(unlockedPkg)
+                    }
+                }
+            }
+        }
     }
 
     fun isAppTemporarilyUnlocked(packageName: String): Boolean {
+        if (activeVisitUnlocked.contains(packageName)) {
+            return true
+        }
         val expiresAt = unlockedUntilMillis[packageName] ?: return false
         if (System.currentTimeMillis() <= expiresAt) {
             return true
@@ -84,6 +121,7 @@ object AppLockSessionManager {
 
     fun relockAllApps() {
         unlockedUntilMillis.clear()
+        activeVisitUnlocked.clear()
         lockVault()
     }
 }
