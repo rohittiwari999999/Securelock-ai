@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -30,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -46,7 +49,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.securelock.ai.data.AppLanguage
 import com.securelock.ai.data.LockMethod
 import com.securelock.ai.security.PermissionHelper
+import com.securelock.ai.security.SecretDateUnlockEvaluator
 import com.securelock.ai.security.SecureStorageRepository
+import com.securelock.ai.service.AppLockSessionManager
 import com.securelock.ai.ui.components.PatternLockPad
 import com.securelock.ai.ui.components.SecureTopBar
 import com.securelock.ai.ui.components.WhiteSecurityCard
@@ -66,9 +71,11 @@ fun SettingsScreen(
     var showChangePinDialog by remember { mutableStateOf(false) }
     var showChangePatternDialog by remember { mutableStateOf(false) }
     var showChangePasswordDialog by remember { mutableStateOf(false) }
+    var showSecretDateDialog by remember { mutableStateOf(false) }
     var showPrivacyPolicyDialog by remember { mutableStateOf(false) }
     var regeneratedRecovery by remember { mutableStateOf<String?>(null) }
     var backupStatus by remember { mutableStateOf<String?>(null) }
+    val hasSecretPin = remember(settings.secretDateConfig) { repository.hasSecretDatePinConfigured() }
 
     val exportBackupLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -245,18 +252,70 @@ fun SettingsScreen(
             item {
                 WhiteSecurityCard {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Secret Date Unlock (Calendar Stealth)",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = if (settings.secretDateConfig.enabled && hasSecretPin) {
+                                        "Active: Launches as a standalone Calendar; tap your secret date 5 times to verify Secret PIN."
+                                    } else {
+                                        "Launch as a realistic Calendar app and unlock the dashboard by tapping a secret date 5 times."
+                                    },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = settings.secretDateConfig.enabled && hasSecretPin,
+                                onCheckedChange = { enable ->
+                                    if (enable && !hasSecretPin) {
+                                        showSecretDateDialog = true
+                                    } else {
+                                        repository.setSecretDateUnlockEnabled(enable)
+                                    }
+                                }
+                            )
+                        }
+
+                        Button(
+                            onClick = { showSecretDateDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {
+                            Text(if (hasSecretPin) "Update Secret Date & PIN" else "Configure Secret Date & PIN")
+                        }
+                    }
+                }
+            }
+
+            item {
+                WhiteSecurityCard {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("Local Backup, Permissions & Privacy", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         backupStatus?.let {
                             Text(it, style = MaterialTheme.typography.labelMedium, color = EmeraldSafe)
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(
-                                onClick = { exportBackupLauncher.launch("securelock_local_backup.json") },
+                                onClick = {
+                                    AppLockSessionManager.setInternalFlowSuspendedForPicker(true)
+                                    exportBackupLauncher.launch("securelock_local_backup.json")
+                                },
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                             ) {
                                 Text("Export Backup")
                             }
-                            OutlinedButton(onClick = { importBackupLauncher.launch(arrayOf("application/json")) }) {
+                            OutlinedButton(onClick = {
+                                AppLockSessionManager.setInternalFlowSuspendedForPicker(true)
+                                importBackupLauncher.launch(arrayOf("application/json"))
+                            }) {
                                 Text("Restore Backup")
                             }
                         }
@@ -422,6 +481,132 @@ fun SettingsScreen(
             text = { Text("Save this code offline in a safe place: ${regeneratedRecovery!!}") },
             confirmButton = {
                 Button(onClick = { regeneratedRecovery = null }) { Text("Done") }
+            }
+        )
+    }
+
+    if (showSecretDateDialog) {
+        val monthNames = listOf(
+            "January", "February", "March", "April", "May", "June",
+            "July", "August", "September", "October", "November", "December"
+        )
+        var selectedMonth by remember { mutableIntStateOf(settings.secretDateConfig.month.coerceIn(1, 12)) }
+        var dayInput by remember { mutableStateOf(settings.secretDateConfig.day.toString()) }
+        var yearInput by remember { mutableStateOf(settings.secretDateConfig.year?.toString().orEmpty()) }
+        var secretPin by remember { mutableStateOf("") }
+        var confirmSecretPin by remember { mutableStateOf("") }
+        var enableOnSave by remember { mutableStateOf(true) }
+        var configError by remember { mutableStateOf<String?>(null) }
+
+        AlertDialog(
+            onDismissRequest = { showSecretDateDialog = false },
+            title = { Text("Secret Date Unlock Setup") },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Select Secret Month",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(monthNames.indices.toList()) { idx ->
+                            val monthNum = idx + 1
+                            FilterChip(
+                                selected = selectedMonth == monthNum,
+                                onClick = { selectedMonth = monthNum },
+                                label = { Text(monthNames[idx].take(3)) }
+                            )
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = dayInput,
+                        onValueChange = { if (it.length <= 2 && it.all(Char::isDigit)) dayInput = it },
+                        label = { Text("Secret Day (1–31)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true
+                    )
+
+                    OutlinedTextField(
+                        value = yearInput,
+                        onValueChange = { if (it.length <= 4 && it.all(Char::isDigit)) yearInput = it },
+                        label = { Text("Secret Year (Optional, e.g. 2026)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true
+                    )
+
+                    OutlinedTextField(
+                        value = secretPin,
+                        onValueChange = { if (it.length <= 8 && it.all(Char::isDigit)) secretPin = it },
+                        label = {
+                            Text(
+                                if (hasSecretPin) "New Secret PIN (4–8 digits, optional)"
+                                else "Secret PIN (4–8 digits)"
+                            )
+                        },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        singleLine = true
+                    )
+
+                    OutlinedTextField(
+                        value = confirmSecretPin,
+                        onValueChange = { if (it.length <= 8 && it.all(Char::isDigit)) confirmSecretPin = it },
+                        label = { Text("Confirm Secret PIN") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        singleLine = true
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Enable Secret Date Unlock", style = MaterialTheme.typography.bodyMedium)
+                        Switch(checked = enableOnSave, onCheckedChange = { enableOnSave = it })
+                    }
+
+                    configError?.let {
+                        Text(it, color = CrimsonAlert, style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val parsedDay = dayInput.toIntOrNull()
+                    val parsedYear = if (yearInput.isBlank()) null else yearInput.toIntOrNull()
+                    if (parsedDay == null || parsedDay !in 1..31) {
+                        configError = "Enter a valid day between 1 and 31"
+                    } else if (yearInput.isNotBlank() && (parsedYear == null || yearInput.length != 4)) {
+                        configError = "Optional year must be 4 digits (e.g. 2026)"
+                    } else if (!SecretDateUnlockEvaluator.isValidCalendarDate(parsedDay, selectedMonth, parsedYear)) {
+                        configError = "Selected day does not exist in ${monthNames[selectedMonth - 1]}"
+                    } else if (!hasSecretPin && secretPin.length !in 4..8) {
+                        configError = "Secret PIN must be 4–8 digits"
+                    } else if (secretPin.isNotEmpty() && secretPin.length !in 4..8) {
+                        configError = "Secret PIN must be 4–8 digits"
+                    } else if (secretPin.isNotEmpty() && secretPin != confirmSecretPin) {
+                        configError = "Secret PINs do not match"
+                    } else {
+                        repository.saveSecretDateConfiguration(
+                            day = parsedDay,
+                            month = selectedMonth,
+                            year = parsedYear,
+                            enabled = enableOnSave,
+                            newSecretPin = secretPin.takeIf { it.isNotEmpty() }
+                        )
+                        showSecretDateDialog = false
+                    }
+                }) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSecretDateDialog = false }) { Text("Cancel") }
             }
         )
     }

@@ -1,11 +1,13 @@
 package com.securelock.ai
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.fragment.app.FragmentActivity
+import com.securelock.ai.service.AppLockSessionManager
 import com.securelock.ai.ui.navigation.SecureLockNavHost
 import com.securelock.ai.ui.theme.SecureLockTheme
 
@@ -35,6 +37,18 @@ class MainActivity : FragmentActivity() {
                     vaultRepository = app.vaultRepository
                 )
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val app = application as SecureLockApplication
+        if (app.storageRepository.isSecretDateUnlockActive() &&
+            intent.action == Intent.ACTION_MAIN &&
+            intent.hasCategory(Intent.CATEGORY_LAUNCHER)
+        ) {
+            AppLockSessionManager.lockVault()
         }
     }
 }

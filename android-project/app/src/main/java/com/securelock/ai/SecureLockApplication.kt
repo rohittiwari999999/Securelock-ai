@@ -49,7 +49,10 @@ class SecureLockApplication : Application(), DefaultLifecycleObserver {
         backgroundTimestampMillis = System.currentTimeMillis()
         vaultRepository.wipeTempPlaybackFiles()
         val timeoutSeconds = storageRepository.settings.value.relockTimeoutSeconds
-        if (timeoutSeconds == 0) {
+        val secretDateActive = storageRepository.isSecretDateUnlockActive()
+        if (timeoutSeconds == 0 ||
+            (secretDateActive && !AppLockSessionManager.isInternalFlowSuspendedForPicker)
+        ) {
             AppLockSessionManager.lockVault()
         } else {
             AppLockSessionManager.lockMediaVault()
@@ -57,6 +60,7 @@ class SecureLockApplication : Application(), DefaultLifecycleObserver {
     }
 
     override fun onStart(owner: LifecycleOwner) {
+        AppLockSessionManager.setInternalFlowSuspendedForPicker(false)
         if (backgroundTimestampMillis == 0L) return
         val timeoutSeconds = storageRepository.settings.value.relockTimeoutSeconds
         val elapsedMillis = System.currentTimeMillis() - backgroundTimestampMillis

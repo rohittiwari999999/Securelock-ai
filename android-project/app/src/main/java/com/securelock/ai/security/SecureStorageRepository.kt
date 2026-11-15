@@ -9,6 +9,7 @@ import com.securelock.ai.data.LocalSettingsState
 import com.securelock.ai.data.LocalStatistics
 import com.securelock.ai.data.LockMethod
 import com.securelock.ai.data.ProtectedNotificationRecord
+import com.securelock.ai.data.SecretDateConfig
 import com.securelock.ai.data.SecurityEvent
 import com.securelock.ai.data.SecurityEventType
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -56,6 +57,9 @@ class SecureStorageRepository(context: Context) {
     fun hasPatternConfigured(): Boolean = !prefs.getString(KEY_PATTERN_HASH, null).isNullOrEmpty()
     fun hasPasswordConfigured(): Boolean = !prefs.getString(KEY_PASSWORD_HASH, null).isNullOrEmpty()
     fun hasRecoveryCodeConfigured(): Boolean = !prefs.getString(KEY_RECOVERY_HASH, null).isNullOrEmpty()
+    fun hasSecretDatePinConfigured(): Boolean = !prefs.getString(KEY_SECRET_DATE_PIN_HASH, null).isNullOrEmpty()
+    fun isSecretDateUnlockActive(): Boolean =
+        _settings.value.secretDateConfig.enabled && hasSecretDatePinConfigured()
 
     fun configuredPinLength(): Int = prefs.getInt(KEY_PIN_LENGTH, 4)
 
@@ -167,6 +171,106 @@ class SecureStorageRepository(context: Context) {
         _settings.value = updated
         val encrypted = KeystoreCryptoManager.encrypt(json.encodeToString(updated))
         prefs.edit().putString(KEY_SETTINGS, encrypted).apply()
+    }
+
+    fun saveSecretDateConfiguration(
+        day: Int,
+        month: Int,
+        year: Int?,
+        enabled: Boolean,
+        newSecretPin: String?
+    ) {
+        if (!newSecretPin.isNullOrEmpty()) {
+            val chars = newSecretPin.toCharArray()
+            val encryptedHash = KeystoreCryptoManager.encrypt(KeystoreCryptoManager.hashSecret(chars))
+            chars.fill('\u0000')
+            prefs.edit()
+                .putString(KEY_SECRET_DATE_PIN_HASH, encryptedHash)
+                .remove(KEY_SECRET_DATE_RATE_STATE)
+                .apply()
+        }
+        val canEnable = enabled && (hasSecretDatePinConfigured() || !newSecretPin.isNullOrEmpty())
+        updateSettings {
+            it.copy(
+                secretDateConfig = SecretDateConfig(
+                    enabled = canEnable,
+                    day = day.coerceIn(1, 31),
+                    month = month.coerceIn(1, 12),
+                    year = year
+                )
+            )
+        }
+    }
+
+    fun setSecretDateUnlockEnabled(enabled: Boolean) {
+        val canEnable = enabled && hasSecretDatePinConfigured()
+        updateSettings {
+            it.copy(secretDateConfig = it.secretDateConfig.copy(enabled = canEnable))
+        }
+    }
+
+    fun matchesSecretDate(day: Int, month: Int, year: Int): Boolean {
+        return SecretDateUnlockEvaluator.matchesSecretDate(
+            config = _settings.value.secretDateConfig,
+            hasSecretPin = hasSecretDatePinConfigured(),
+            day = day,
+            month = month,
+            year = year
+        )
+    }
+
+    fun getSecretDateRemainingLockoutSeconds(nowMillis: Long = System.currentTimeMillis()): Long {
+        val (_, lockoutUntil) = readSecretRateState()
+        if (nowMillis >= lockoutUntil) return 0L
+        return ((lockoutUntil - nowMillis + 999L) / 1000L).coerceAtLeast(1L)
+    }
+
+    fun verifySecretDatePin(pin: String, nowMillis: Long = System.currentTimeMillis()): SecretPinVerifyResult {
+        val (failures, lockoutUntil) = readSecretRateState()
+        if (nowMillis < lockoutUntil) {
+            val remaining = ((lockoutUntil - nowMillis + 999L) / 1000L).coerceAtLeast(1L)
+            return SecretPinVerifyResult.RateLimited(remaining)
+        }
+
+        val encrypted = prefs.getString(KEY_SECRET_DATE_PIN_HASH, null)
+            ?: return SecretPinVerifyResult.Incorrect(failures + 1)
+        val storedHash = KeystoreCryptoManager.decrypt(encrypted)
+            ?: return SecretPinVerifyResult.Incorrect(failures + 1)
+
+        val chars = pin.toCharArray()
+        val ok = KeystoreCryptoManager.verifySecret(chars, storedHash)
+        chars.fill('\u0000')
+
+        if (ok) {
+            prefs.edit().remove(KEY_SECRET_DATE_RATE_STATE).apply()
+            return SecretPinVerifyResult.Success
+        }
+
+        val nextFailures = failures + 1
+        val cooldownSec = SecretDateUnlockEvaluator.cooldownSecondsForFailures(nextFailures)
+        val nextLockoutUntil = if (cooldownSec > 0L) nowMillis + cooldownSec * 1000L else 0L
+        persistSecretRateState(nextFailures, nextLockoutUntil)
+
+        return if (cooldownSec > 0L) {
+            SecretPinVerifyResult.RateLimited(cooldownSec)
+        } else {
+            SecretPinVerifyResult.Incorrect(nextFailures)
+        }
+    }
+
+    private fun readSecretRateState(): Pair<Int, Long> {
+        val encrypted = prefs.getString(KEY_SECRET_DATE_RATE_STATE, null) ?: return 0 to 0L
+        val raw = KeystoreCryptoManager.decrypt(encrypted) ?: return 0 to 0L
+        val parts = raw.split(":")
+        if (parts.size != 2) return 0 to 0L
+        val failures = parts[0].toIntOrNull() ?: 0
+        val lockoutUntil = parts[1].toLongOrNull() ?: 0L
+        return failures to lockoutUntil
+    }
+
+    private fun persistSecretRateState(failures: Int, lockoutUntilMillis: Long) {
+        val encrypted = KeystoreCryptoManager.encrypt("$failures:$lockoutUntilMillis")
+        prefs.edit().putString(KEY_SECRET_DATE_RATE_STATE, encrypted).apply()
     }
 
     fun recordAuthAttempt(success: Boolean, methodLabel: String, targetPackage: String = appContext.packageName) {
@@ -327,8 +431,14 @@ class SecureStorageRepository(context: Context) {
     fun importLocalBackupJson(rawJson: String): Boolean {
         return runCatching {
             val payload = json.decodeFromString<LocalBackupPayload>(rawJson)
+            val pinReady = hasSecretDatePinConfigured()
             updateSettings { current ->
-                payload.settings.copy(isSetupComplete = current.isSetupComplete)
+                payload.settings.copy(
+                    isSetupComplete = current.isSetupComplete,
+                    secretDateConfig = payload.settings.secretDateConfig.copy(
+                        enabled = payload.settings.secretDateConfig.enabled && pinReady
+                    )
+                )
             }
             persistStatistics(payload.statistics)
             true
@@ -405,6 +515,8 @@ class SecureStorageRepository(context: Context) {
         private const val KEY_PATTERN_HASH = "pattern_hash"
         private const val KEY_PASSWORD_HASH = "password_hash"
         private const val KEY_RECOVERY_HASH = "recovery_hash"
+        private const val KEY_SECRET_DATE_PIN_HASH = "secret_date_pin_hash"
+        private const val KEY_SECRET_DATE_RATE_STATE = "secret_date_rate_state"
         private const val KEY_SETTINGS = "settings_json"
         private const val KEY_STATS = "stats_json"
         private const val KEY_INTRUDERS = "intruders_json"

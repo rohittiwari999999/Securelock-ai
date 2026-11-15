@@ -349,6 +349,7 @@ fun VaultScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = {
+                                AppLockSessionManager.setInternalFlowSuspendedForPicker(true)
                                 multiImportLauncher.launch(arrayOf("image/*", "video/*"))
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
@@ -357,11 +358,13 @@ fun VaultScreen(
                             Text("  Import Photos/Videos")
                         }
                         OutlinedButton(onClick = {
+                            AppLockSessionManager.setInternalFlowSuspendedForPicker(true)
                             backupVaultLauncher.launch("securelock_vault_backup.slvbak")
                         }) {
                             Text("Backup")
                         }
                         OutlinedButton(onClick = {
+                            AppLockSessionManager.setInternalFlowSuspendedForPicker(true)
                             restoreVaultLauncher.launch(arrayOf("*/*"))
                         }) {
                             Text("Restore")
@@ -585,6 +588,7 @@ fun VaultScreen(
             item = item,
             onRequestExport = {
                 pendingExportItem = item
+                AppLockSessionManager.setInternalFlowSuspendedForPicker(true)
                 exportMediaLauncher.launch(item.displayName)
             },
             onDismiss = {

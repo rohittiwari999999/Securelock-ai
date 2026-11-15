@@ -1,5 +1,8 @@
 package com.securelock.ai.service
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -10,6 +13,9 @@ object AppLockSessionManager {
 
     private val unlockedUntilMillis = ConcurrentHashMap<String, Long>()
 
+    private val _vaultUnlockedFlow = MutableStateFlow(false)
+    val vaultUnlockedFlow: StateFlow<Boolean> = _vaultUnlockedFlow.asStateFlow()
+
     @Volatile
     var isVaultUnlocked: Boolean = false
         private set
@@ -19,17 +25,27 @@ object AppLockSessionManager {
         private set
 
     @Volatile
+    var isInternalFlowSuspendedForPicker: Boolean = false
+        private set
+
+    @Volatile
     private var vaultUnlockedAtMillis: Long = 0L
+
+    fun setInternalFlowSuspendedForPicker(active: Boolean) {
+        isInternalFlowSuspendedForPicker = active
+    }
 
     fun unlockVault() {
         isVaultUnlocked = true
         vaultUnlockedAtMillis = System.currentTimeMillis()
+        _vaultUnlockedFlow.value = true
     }
 
     fun lockVault() {
         isVaultUnlocked = false
         isMediaVaultUnlocked = false
         vaultUnlockedAtMillis = 0L
+        _vaultUnlockedFlow.value = false
     }
 
     fun unlockMediaVault() {

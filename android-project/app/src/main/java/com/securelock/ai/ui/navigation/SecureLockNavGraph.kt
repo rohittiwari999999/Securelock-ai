@@ -1,19 +1,20 @@
 package com.securelock.ai.ui.navigation
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.fragment.app.FragmentActivity
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.securelock.ai.security.SecureStorageRepository
 import com.securelock.ai.security.VaultRepository
 import com.securelock.ai.service.AppLockSessionManager
 import com.securelock.ai.ui.screens.AppLockScreen
+import com.securelock.ai.ui.screens.CalendarLaunchScreen
 import com.securelock.ai.ui.screens.CameraPrivacyMonitorScreen
 import com.securelock.ai.ui.screens.DashboardScreen
 import com.securelock.ai.ui.screens.FakeCrashConfigScreen
@@ -28,6 +29,7 @@ import com.securelock.ai.ui.screens.UnlockScreen
 import com.securelock.ai.ui.screens.VaultScreen
 
 object Routes {
+    const val CALENDAR_LAUNCH = "calendar_launch"
     const val UNLOCK = "unlock"
     const val DASHBOARD = "dashboard"
     const val APP_LOCK = "app_lock"
@@ -51,17 +53,55 @@ fun SecureLockNavHost(
 ) {
     val navController = rememberNavController()
     val settings by repository.settings.collectAsState()
-    var vaultUnlocked by remember {
-        mutableStateOf(AppLockSessionManager.isVaultUnlocked)
-    }
+    val vaultUnlocked by AppLockSessionManager.vaultUnlockedFlow.collectAsState()
+    val backStackEntry by navController.currentBackStackEntryAsState()
 
     val needsSetup = !repository.hasPinConfigured()
-    val startRoute = if (needsSetup || !vaultUnlocked) Routes.UNLOCK else Routes.DASHBOARD
+    val secretDateActive = !needsSetup &&
+        settings.secretDateConfig.enabled &&
+        repository.hasSecretDatePinConfigured()
+
+    val startRoute = when {
+        needsSetup -> Routes.UNLOCK
+        !vaultUnlocked && secretDateActive -> Routes.CALENDAR_LAUNCH
+        !vaultUnlocked -> Routes.UNLOCK
+        else -> Routes.DASHBOARD
+    }
+
+    // Automatically return to Calendar (or Unlock) when vault relocks in background / screen-off
+    LaunchedEffect(vaultUnlocked, secretDateActive, needsSetup) {
+        val currentRoute = backStackEntry?.destination?.route
+        if (!vaultUnlocked && currentRoute != null &&
+            currentRoute != Routes.CALENDAR_LAUNCH &&
+            currentRoute != Routes.UNLOCK
+        ) {
+            val lockTarget = if (!needsSetup && secretDateActive) {
+                Routes.CALENDAR_LAUNCH
+            } else {
+                Routes.UNLOCK
+            }
+            navController.navigate(lockTarget) {
+                popUpTo(0) { inclusive = true }
+            }
+        }
+    }
 
     NavHost(
         navController = navController,
         startDestination = startRoute
     ) {
+        composable(Routes.CALENDAR_LAUNCH) {
+            CalendarLaunchScreen(
+                repository = repository,
+                onSecretUnlocked = {
+                    AppLockSessionManager.unlockVault()
+                    navController.navigate(Routes.DASHBOARD) {
+                        popUpTo(Routes.CALENDAR_LAUNCH) { inclusive = true }
+                    }
+                }
+            )
+        }
+
         composable(Routes.UNLOCK) {
             UnlockScreen(
                 activity = activity,
@@ -71,7 +111,6 @@ fun SecureLockNavHost(
                 isSetupFlow = needsSetup,
                 onUnlocked = {
                     AppLockSessionManager.unlockVault()
-                    vaultUnlocked = true
                     navController.navigate(Routes.DASHBOARD) {
                         popUpTo(Routes.UNLOCK) { inclusive = true }
                     }
@@ -80,15 +119,22 @@ fun SecureLockNavHost(
         }
 
         composable(Routes.DASHBOARD) {
+            BackHandler(enabled = secretDateActive) {
+                AppLockSessionManager.lockVault()
+                navController.navigate(Routes.CALENDAR_LAUNCH) {
+                    popUpTo(0) { inclusive = true }
+                }
+            }
+
             DashboardScreen(
                 repository = repository,
                 vaultRepository = vaultRepository,
                 onNavigate = { route -> navController.navigate(route) },
                 onLockNow = {
                     AppLockSessionManager.lockVault()
-                    vaultUnlocked = false
-                    navController.navigate(Routes.UNLOCK) {
-                        popUpTo(Routes.DASHBOARD) { inclusive = true }
+                    val lockTarget = if (secretDateActive) Routes.CALENDAR_LAUNCH else Routes.UNLOCK
+                    navController.navigate(lockTarget) {
+                        popUpTo(0) { inclusive = true }
                     }
                 }
             )

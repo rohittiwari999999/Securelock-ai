@@ -196,6 +196,14 @@ data class LocalStatistics(
 )
 
 @Serializable
+data class SecretDateConfig(
+    val enabled: Boolean = false,
+    val day: Int = 15,
+    val month: Int = 6,
+    val year: Int? = null
+)
+
+@Serializable
 data class LocalSettingsState(
     val isSetupComplete: Boolean = false,
     val preferredLockMethod: LockMethod = LockMethod.PIN_4,
@@ -218,7 +226,8 @@ data class LocalSettingsState(
     val language: AppLanguage = AppLanguage.ENGLISH,
     val protectedPackages: Set<String> = emptySet(),
     val notificationMaskedPackages: Set<String> = emptySet(),
-    val protectionScreenConfig: ProtectionScreenConfig = ProtectionScreenConfig()
+    val protectionScreenConfig: ProtectionScreenConfig = ProtectionScreenConfig(),
+    val secretDateConfig: SecretDateConfig = SecretDateConfig()
 )
 
 @Serializable
