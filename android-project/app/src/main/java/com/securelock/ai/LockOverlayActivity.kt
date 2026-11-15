@@ -2,6 +2,7 @@ package com.securelock.ai
 
 import android.Manifest
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
@@ -95,13 +96,19 @@ class LockOverlayActivity : FragmentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         enableEdgeToEdge()
 
+        val repository = (application as SecureLockApplication).storageRepository
         activeTargetPackage = intent.getStringExtra(EXTRA_TARGET_PACKAGE) ?: ""
-        if (activeTargetPackage.isBlank() || activeTargetPackage == packageName) {
-            finish()
+        if (activeTargetPackage.isBlank() ||
+            activeTargetPackage == packageName ||
+            AppLockSessionManager.isAppTemporarilyUnlocked(
+                packageName = activeTargetPackage,
+                timeoutSeconds = repository.settings.value.relockTimeoutSeconds,
+                currentForegroundPackage = activeTargetPackage
+            )
+        ) {
+            finishOverlayQuietly()
             return
         }
-
-        val repository = (application as SecureLockApplication).storageRepository
 
         setContent {
             val settings by repository.settings.collectAsState()
@@ -130,7 +137,7 @@ class LockOverlayActivity : FragmentActivity() {
                             packageName = targetPackage,
                             timeoutSeconds = settings.relockTimeoutSeconds
                         )
-                        finish()
+                        revealUnlockedTargetApp(targetPackage)
                     },
                     onCancelHome = { exitToHomeScreen() }
                 )
@@ -155,19 +162,56 @@ class LockOverlayActivity : FragmentActivity() {
         setIntent(intent)
         val nextPkg = intent.getStringExtra(EXTRA_TARGET_PACKAGE)
         if (!nextPkg.isNullOrBlank() && nextPkg != packageName) {
+            val repository = (application as SecureLockApplication).storageRepository
+            if (AppLockSessionManager.isAppTemporarilyUnlocked(
+                    packageName = nextPkg,
+                    timeoutSeconds = repository.settings.value.relockTimeoutSeconds,
+                    currentForegroundPackage = nextPkg
+                )
+            ) {
+                finishOverlayQuietly()
+                return
+            }
             activeTargetPackage = nextPkg
             AppLockSessionManager.setOverlayActive(nextPkg)
         }
     }
 
+    private fun revealUnlockedTargetApp(targetPkg: String) {
+        val launchIntent = packageManager.getLaunchIntentForPackage(targetPkg)?.apply {
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_NO_ANIMATION
+            )
+        }
+        if (launchIntent != null) {
+            runCatching { startActivity(launchIntent) }
+        }
+        finishOverlayQuietly()
+    }
+
+    private fun finishOverlayQuietly() {
+        finishAndRemoveTask()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, 0, 0)
+        } else {
+            @Suppress("DEPRECATION")
+            overridePendingTransition(0, 0)
+        }
+    }
+
     private fun exitToHomeScreen() {
-        AppLockSessionManager.setOverlayActive(null)
+        if (activeTargetPackage.isNotBlank()) {
+            AppLockSessionManager.noteOverlayDismissedToHome(activeTargetPackage)
+        } else {
+            AppLockSessionManager.setOverlayActive(null)
+        }
         val homeIntent = Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_HOME)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
         }
         runCatching { startActivity(homeIntent) }
-        finish()
+        finishOverlayQuietly()
     }
 
     companion object {

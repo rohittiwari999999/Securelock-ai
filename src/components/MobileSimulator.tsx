@@ -253,7 +253,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
   const [enteredPattern, setEnteredPattern] = useState<number[]>([]);
   const [authError, setAuthError] = useState(false);
 
-  const [relockTimeout, setRelockTimeout] = useState(30);
+  const [relockTimeout, setRelockTimeout] = useState(-1);
   const [lockOnScreenOff, setLockOnScreenOff] = useState(true);
   const [foregroundPromptEnabled, setForegroundPromptEnabled] = useState(true);
   const [intruderThreshold, setIntruderThreshold] = useState(3);
@@ -1953,7 +1953,13 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="text-xs font-bold">Lock on Screen Off</div>
-                          <div className="text-[11px] opacity-70">Delay: {relockTimeout}s</div>
+                          <div className="text-[11px] opacity-70">
+                            {relockTimeout < 0
+                              ? 'Stay open until screen off'
+                              : relockTimeout === 0
+                                ? 'Relock on app exit'
+                                : `Background delay: ${relockTimeout}s`}
+                          </div>
                         </div>
                         <button
                           type="button"
@@ -1968,8 +1974,8 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                           {lockOnScreenOff ? 'On' : 'Off'}
                         </button>
                       </div>
-                      <div className="flex gap-1.5">
-                        {[0, 15, 30, 120, 300].map((sec) => (
+                      <div className="flex flex-wrap gap-1.5">
+                        {[-1, 0, 30, 120, 300].map((sec) => (
                           <button
                             key={sec}
                             type="button"
@@ -1981,7 +1987,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                                 : { backgroundColor: 'rgba(148,163,184,0.2)' }
                             }
                           >
-                            {sec === 0 ? 'Now' : `${sec}s`}
+                            {sec < 0 ? 'Screen Off' : sec === 0 ? 'On Exit' : `${sec}s Bg`}
                           </button>
                         ))}
                       </div>

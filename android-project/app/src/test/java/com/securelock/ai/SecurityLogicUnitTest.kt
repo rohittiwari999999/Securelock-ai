@@ -19,21 +19,58 @@ class SecurityLogicUnitTest {
     @Test
     fun appLockSessionManager_grantsAndRevokesTemporaryAndMediaVaultAccess() {
         val pkg = "com.example.protectedapp"
+        val own = "com.securelock.ai"
+        val launcher = "com.bbk.launcher2"
+        var now = 100_000L
+
         AppLockSessionManager.relockAllApps()
-        assertFalse(AppLockSessionManager.isAppTemporarilyUnlocked(pkg))
+        assertFalse(AppLockSessionManager.isAppTemporarilyUnlocked(pkg, timeoutSeconds = -1, nowMillis = now))
         assertFalse(AppLockSessionManager.isMediaVaultUnlocked)
         assertFalse(AppLockSessionManager.vaultUnlockedFlow.value)
 
         AppLockSessionManager.unlockVault()
         assertTrue(AppLockSessionManager.vaultUnlockedFlow.value)
 
-        AppLockSessionManager.markAppUnlocked(pkg, timeoutSeconds = 30)
+        AppLockSessionManager.markAppUnlocked(pkg, timeoutSeconds = 30, nowMillis = now)
         AppLockSessionManager.unlockMediaVault()
-        assertTrue(AppLockSessionManager.isAppTemporarilyUnlocked(pkg))
+        assertTrue(AppLockSessionManager.isAppTemporarilyUnlocked(pkg, timeoutSeconds = 30, currentForegroundPackage = pkg, nowMillis = now))
         assertTrue(AppLockSessionManager.isMediaVaultUnlocked)
 
+        // Staying inside the unlocked app for 10 minutes must NEVER relock mid-session
+        now += 600_000L
+        AppLockSessionManager.onForegroundPackageObserved(pkg, own, timeoutSeconds = 30, nowMillis = now)
+        assertTrue(AppLockSessionManager.isAppTemporarilyUnlocked(pkg, timeoutSeconds = 30, currentForegroundPackage = pkg, nowMillis = now))
+
+        // Transient system packages (SystemUI, keyboard, SecureLock overlay) must not trigger leave timer
+        now += 5_000L
+        AppLockSessionManager.onForegroundPackageObserved("com.android.systemui", own, timeoutSeconds = 30, nowMillis = now)
+        assertTrue(AppLockSessionManager.isAppTemporarilyUnlocked(pkg, timeoutSeconds = 30, nowMillis = now))
+
+        // Leaving to launcher starts the 30s background timer; returning within 10s cancels it
+        AppLockSessionManager.onForegroundPackageObserved(launcher, own, timeoutSeconds = 30, nowMillis = now)
+        now += 10_000L
+        AppLockSessionManager.onForegroundPackageObserved(launcher, own, timeoutSeconds = 30, nowMillis = now)
+        assertTrue(AppLockSessionManager.isAppTemporarilyUnlocked(pkg, timeoutSeconds = 30, nowMillis = now))
+        AppLockSessionManager.onForegroundPackageObserved(pkg, own, timeoutSeconds = 30, nowMillis = now)
+        now += 60_000L
+        assertTrue(AppLockSessionManager.isAppTemporarilyUnlocked(pkg, timeoutSeconds = 30, currentForegroundPackage = pkg, nowMillis = now))
+
+        // Leaving to launcher past 30s revokes the 30s timed session
+        AppLockSessionManager.onForegroundPackageObserved(launcher, own, timeoutSeconds = 30, nowMillis = now)
+        now += 35_000L
+        AppLockSessionManager.onForegroundPackageObserved(launcher, own, timeoutSeconds = 30, nowMillis = now)
+        assertFalse(AppLockSessionManager.isAppTemporarilyUnlocked(pkg, timeoutSeconds = 30, nowMillis = now))
+
+        // "Until Screen Off" (-1) remains unlocked in background until relockAllApps() (screen off)
+        AppLockSessionManager.markAppUnlocked(pkg, timeoutSeconds = -1, nowMillis = now)
+        now += 600_000L
+        AppLockSessionManager.onForegroundPackageObserved(launcher, own, timeoutSeconds = -1, nowMillis = now)
+        assertTrue(AppLockSessionManager.isAppTemporarilyUnlocked(pkg, timeoutSeconds = -1, nowMillis = now))
+        AppLockSessionManager.evaluateVaultTimeout(timeoutSeconds = -1, nowMillis = now)
+        assertTrue(AppLockSessionManager.vaultUnlockedFlow.value)
+
         AppLockSessionManager.relockAllApps()
-        assertFalse(AppLockSessionManager.isAppTemporarilyUnlocked(pkg))
+        assertFalse(AppLockSessionManager.isAppTemporarilyUnlocked(pkg, timeoutSeconds = -1, nowMillis = now))
         assertFalse(AppLockSessionManager.isMediaVaultUnlocked)
         assertFalse(AppLockSessionManager.vaultUnlockedFlow.value)
     }
@@ -42,6 +79,7 @@ class SecurityLogicUnitTest {
     fun defaultSettings_enforceOfflineSafeAndThemeDefaults() {
         val defaults = LocalSettingsState()
         assertTrue(defaults.biometricEnabled)
+        assertEquals(-1, defaults.relockTimeoutSeconds)
         assertTrue(defaults.lockOnScreenOff)
         assertTrue(defaults.safeBrowsingWarningsEnabled)
         assertTrue(defaults.foregroundIntruderPromptEnabled)

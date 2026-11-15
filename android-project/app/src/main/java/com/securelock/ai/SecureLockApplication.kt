@@ -66,6 +66,7 @@ class SecureLockApplication : Application(), DefaultLifecycleObserver {
         AppLockServiceController.syncMonitorService(this, storageRepository.settings.value)
         if (backgroundTimestampMillis == 0L) return
         val timeoutSeconds = storageRepository.settings.value.relockTimeoutSeconds
+        if (timeoutSeconds <= 0) return
         val elapsedMillis = System.currentTimeMillis() - backgroundTimestampMillis
         if (elapsedMillis >= timeoutSeconds * 1000L) {
             AppLockSessionManager.lockVault()

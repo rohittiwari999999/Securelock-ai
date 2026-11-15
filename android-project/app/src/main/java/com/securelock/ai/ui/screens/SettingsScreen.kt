@@ -226,8 +226,21 @@ fun SettingsScreen(
                                 }
                             )
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(0 to "Immediate", 15 to "15s", 30 to "30s", 120 to "2m", 300 to "5m").forEach { (sec, label) ->
+                        Text(
+                            text = "Unlocked apps stay open while in use; background delay counts only after switching away.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(
+                                listOf(
+                                    -1 to "Until Screen Off",
+                                    0 to "On Exit",
+                                    30 to "30s Bg",
+                                    120 to "2m Bg",
+                                    300 to "5m Bg"
+                                )
+                            ) { (sec, label) ->
                                 FilterChip(
                                     selected = settings.relockTimeoutSeconds == sec,
                                     onClick = { repository.updateSettings { it.copy(relockTimeoutSeconds = sec) } },

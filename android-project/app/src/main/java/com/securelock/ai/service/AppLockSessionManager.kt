@@ -6,14 +6,22 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Coordinates automatic relocking, lock-on-screen-off, configurable grace timeouts,
- * and single-flight LockOverlayActivity launches across Accessibility & Monitor services
- * so both services can never launch conflicting overlays simultaneously.
+ * Coordinates automatic relocking, lock-on-screen-off, foreground-persistent sessions,
+ * background grace timeouts, and single-flight LockOverlayActivity launches across
+ * Accessibility & Monitor services so both services never conflict or prematurely relock.
  */
 object AppLockSessionManager {
 
-    private val unlockedUntilMillis = ConcurrentHashMap<String, Long>()
-    private val activeVisitUnlocked = ConcurrentHashMap.newKeySet<String>()
+    private const val POST_UNLOCK_HANDOFF_GRACE_MS = 1_500L
+    private const val IMMEDIATE_LEAVE_GRACE_MS = 1_500L
+
+    private data class UnlockEntry(
+        val unlockedAtMillis: Long,
+        @Volatile var lastSeenForegroundAtMillis: Long,
+        @Volatile var leftForegroundAtMillis: Long? = null
+    )
+
+    private val unlockedApps = ConcurrentHashMap<String, UnlockEntry>()
     private val launchLock = Any()
 
     @Volatile
@@ -67,6 +75,16 @@ object AppLockSessionManager {
         }
     }
 
+    fun noteOverlayDismissedToHome(packageName: String, nowMillis: Long = System.currentTimeMillis()) {
+        synchronized(launchLock) {
+            if (activeOverlayPackage == packageName) {
+                activeOverlayPackage = null
+            }
+            lastOverlayLaunchPackage = packageName
+            lastOverlayLaunchAtMillis = nowMillis
+        }
+    }
+
     fun unlockVault() {
         isVaultUnlocked = true
         vaultUnlockedAtMillis = System.currentTimeMillis()
@@ -88,19 +106,24 @@ object AppLockSessionManager {
         isMediaVaultUnlocked = false
     }
 
-    fun evaluateVaultTimeout(timeoutSeconds: Int) {
+    fun evaluateVaultTimeout(timeoutSeconds: Int, nowMillis: Long = System.currentTimeMillis()) {
         if (!isVaultUnlocked) return
-        if (timeoutSeconds <= 0) {
+        if (timeoutSeconds < 0) return
+        if (timeoutSeconds == 0) {
             lockVault()
             return
         }
-        val elapsed = System.currentTimeMillis() - vaultUnlockedAtMillis
+        val elapsed = nowMillis - vaultUnlockedAtMillis
         if (elapsed >= timeoutSeconds * 1000L) {
             lockVault()
         }
     }
 
-    fun markAppUnlocked(packageName: String, timeoutSeconds: Int) {
+    fun markAppUnlocked(
+        packageName: String,
+        timeoutSeconds: Int = -1,
+        nowMillis: Long = System.currentTimeMillis()
+    ) {
         synchronized(launchLock) {
             if (activeOverlayPackage == packageName) {
                 activeOverlayPackage = null
@@ -110,13 +133,11 @@ object AppLockSessionManager {
                 lastOverlayLaunchAtMillis = 0L
             }
         }
-        if (timeoutSeconds <= 0) {
-            activeVisitUnlocked.add(packageName)
-            unlockedUntilMillis[packageName] = System.currentTimeMillis() + 600L
-        } else {
-            activeVisitUnlocked.remove(packageName)
-            unlockedUntilMillis[packageName] = System.currentTimeMillis() + timeoutSeconds * 1000L
-        }
+        unlockedApps[packageName] = UnlockEntry(
+            unlockedAtMillis = nowMillis,
+            lastSeenForegroundAtMillis = nowMillis,
+            leftForegroundAtMillis = null
+        )
     }
 
     fun isSystemTransientPackage(packageName: String, ownPackage: String): Boolean {
@@ -127,48 +148,117 @@ object AppLockSessionManager {
             packageName == "com.google.android.permissioncontroller" ||
             packageName == "com.android.packageinstaller" ||
             packageName == "com.google.android.packageinstaller" ||
+            packageName == "com.android.intentresolver" ||
+            packageName == "com.android.providers.media.module" ||
+            packageName == "com.google.android.providers.media.module" ||
+            packageName == "com.vivo.fingerprintui" ||
+            packageName == "com.vivo.biometrics" ||
+            packageName == "com.samsung.android.biometrics.app.setting" ||
             packageName.contains("inputmethod", ignoreCase = true)
     }
 
     fun onForegroundPackageObserved(
         observedPackage: String,
         ownPackage: String,
-        timeoutSeconds: Int
+        timeoutSeconds: Int,
+        nowMillis: Long = System.currentTimeMillis()
     ) {
         if (isSystemTransientPackage(observedPackage, ownPackage)) {
             return
         }
-        if (timeoutSeconds <= 0 && activeVisitUnlocked.isNotEmpty()) {
-            val now = System.currentTimeMillis()
-            val iterator = activeVisitUnlocked.iterator()
-            while (iterator.hasNext()) {
-                val unlockedPkg = iterator.next()
-                if (unlockedPkg != observedPackage) {
-                    val graceUntil = unlockedUntilMillis[unlockedPkg] ?: 0L
-                    if (now > graceUntil) {
+
+        val iterator = unlockedApps.entries.iterator()
+        while (iterator.hasNext()) {
+            val (unlockedPkg, entry) = iterator.next()
+            if (observedPackage == unlockedPkg) {
+                val leftAt = entry.leftForegroundAtMillis
+                if (leftAt == null) {
+                    entry.lastSeenForegroundAtMillis = nowMillis
+                } else if (timeoutSeconds < 0) {
+                    entry.leftForegroundAtMillis = null
+                    entry.lastSeenForegroundAtMillis = nowMillis
+                } else {
+                    val limitMillis = if (timeoutSeconds == 0) {
+                        IMMEDIATE_LEAVE_GRACE_MS
+                    } else {
+                        timeoutSeconds * 1000L
+                    }
+                    if (nowMillis - leftAt <= limitMillis) {
+                        entry.leftForegroundAtMillis = null
+                        entry.lastSeenForegroundAtMillis = nowMillis
+                    } else {
                         iterator.remove()
-                        unlockedUntilMillis.remove(unlockedPkg)
+                    }
+                }
+            } else {
+                // Keep unlocked while activity transition settles right after unlocking
+                if (nowMillis - entry.unlockedAtMillis < POST_UNLOCK_HANDOFF_GRACE_MS) {
+                    continue
+                }
+                // "Until Screen Off" (< 0): keep unlocked even when kept in background
+                if (timeoutSeconds < 0) {
+                    if (entry.leftForegroundAtMillis == null) {
+                        entry.leftForegroundAtMillis = nowMillis
+                    }
+                    continue
+                }
+                val leftAt = entry.leftForegroundAtMillis
+                if (leftAt == null) {
+                    entry.leftForegroundAtMillis = nowMillis
+                } else {
+                    val limitMillis = if (timeoutSeconds == 0) {
+                        IMMEDIATE_LEAVE_GRACE_MS
+                    } else {
+                        timeoutSeconds * 1000L
+                    }
+                    if (nowMillis - leftAt >= limitMillis) {
+                        iterator.remove()
                     }
                 }
             }
         }
     }
 
-    fun isAppTemporarilyUnlocked(packageName: String): Boolean {
-        if (activeVisitUnlocked.contains(packageName)) {
+    fun isAppTemporarilyUnlocked(
+        packageName: String,
+        timeoutSeconds: Int = -1,
+        currentForegroundPackage: String? = null,
+        nowMillis: Long = System.currentTimeMillis()
+    ): Boolean {
+        val entry = unlockedApps[packageName] ?: return false
+
+        // "Until Screen Off" keeps apps unlocked until screen off / manual relock
+        if (timeoutSeconds < 0) {
             return true
         }
-        val expiresAt = unlockedUntilMillis[packageName] ?: return false
-        if (System.currentTimeMillis() <= expiresAt) {
+
+        val leftAt = entry.leftForegroundAtMillis
+        // Never relock while user is actively using the unlocked app in foreground
+        if (leftAt == null) {
+            entry.lastSeenForegroundAtMillis = nowMillis
             return true
         }
-        unlockedUntilMillis.remove(packageName)
+
+        val limitMillis = if (timeoutSeconds == 0) {
+            IMMEDIATE_LEAVE_GRACE_MS
+        } else {
+            timeoutSeconds * 1000L
+        }
+
+        if (nowMillis - leftAt <= limitMillis) {
+            if (currentForegroundPackage == packageName) {
+                entry.leftForegroundAtMillis = null
+                entry.lastSeenForegroundAtMillis = nowMillis
+            }
+            return true
+        }
+
+        unlockedApps.remove(packageName)
         return false
     }
 
     fun relockAllApps() {
-        unlockedUntilMillis.clear()
-        activeVisitUnlocked.clear()
+        unlockedApps.clear()
         lockVault()
     }
 }

@@ -62,6 +62,12 @@ class SecureStorageRepository(context: Context) {
                 }
             }
         }
+        if (!prefs.getBoolean(KEY_RELOCK_POLICY_MIGRATED_V2, false)) {
+            prefs.edit().putBoolean(KEY_RELOCK_POLICY_MIGRATED_V2, true).apply()
+            if (_settings.value.relockTimeoutSeconds == 30) {
+                updateSettings { it.copy(relockTimeoutSeconds = -1) }
+            }
+        }
     }
 
     fun hasPinConfigured(): Boolean = !prefs.getString(KEY_PIN_HASH, null).isNullOrEmpty()
@@ -566,6 +572,7 @@ class SecureStorageRepository(context: Context) {
         private const val KEY_SECRET_DATE_PIN_HASH = "secret_date_pin_hash"
         private const val KEY_SECRET_DATE_RATE_STATE = "secret_date_rate_state"
         private const val KEY_CALENDAR_DISGUISE_MIGRATED = "calendar_disguise_migrated"
+        private const val KEY_RELOCK_POLICY_MIGRATED_V2 = "relock_policy_migrated_v2"
         private const val KEY_SETTINGS = "settings_json"
         private const val KEY_STATS = "stats_json"
         private const val KEY_INTRUDERS = "intruders_json"

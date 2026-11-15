@@ -33,13 +33,17 @@ class AppLockAccessibilityService : AccessibilityService() {
         val isTargetProtected = settings.protectedPackages.contains(packageName) || isSettingsProtected
 
         if (!isTargetProtected) return
-        if (AppLockSessionManager.isAppTemporarilyUnlocked(packageName)) return
+        if (AppLockSessionManager.isAppTemporarilyUnlocked(
+                packageName = packageName,
+                timeoutSeconds = settings.relockTimeoutSeconds,
+                currentForegroundPackage = packageName
+            )
+        ) return
         if (!AppLockSessionManager.tryAcquireOverlayLaunch(packageName)) return
 
         val intent = Intent(this, LockOverlayActivity::class.java).apply {
             addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
                     Intent.FLAG_ACTIVITY_NO_ANIMATION
             )
             putExtra(LockOverlayActivity.EXTRA_TARGET_PACKAGE, packageName)

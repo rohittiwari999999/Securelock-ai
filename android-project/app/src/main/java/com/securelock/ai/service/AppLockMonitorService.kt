@@ -115,14 +115,17 @@ class AppLockMonitorService : Service() {
                         isSettingsLocked
 
                     if (isProtected &&
-                        !AppLockSessionManager.isAppTemporarilyUnlocked(foregroundPackage) &&
+                        !AppLockSessionManager.isAppTemporarilyUnlocked(
+                            packageName = foregroundPackage,
+                            timeoutSeconds = settings.relockTimeoutSeconds,
+                            currentForegroundPackage = foregroundPackage
+                        ) &&
                         Settings.canDrawOverlays(this@AppLockMonitorService) &&
                         AppLockSessionManager.tryAcquireOverlayLaunch(foregroundPackage)
                     ) {
                         val lockIntent = Intent(this@AppLockMonitorService, LockOverlayActivity::class.java).apply {
                             addFlags(
                                 Intent.FLAG_ACTIVITY_NEW_TASK or
-                                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
                                     Intent.FLAG_ACTIVITY_NO_ANIMATION
                             )
                             putExtra(LockOverlayActivity.EXTRA_TARGET_PACKAGE, foregroundPackage)
@@ -156,8 +159,10 @@ class AppLockMonitorService : Service() {
 
         if (latestPackage != null) {
             lastEventQueryMillis = latestTime
-            lastObservedForegroundPackage = latestPackage
-            return latestPackage
+            if (!AppLockSessionManager.isSystemTransientPackage(latestPackage, packageName)) {
+                lastObservedForegroundPackage = latestPackage
+            }
+            return lastObservedForegroundPackage
         }
 
         lastEventQueryMillis = end

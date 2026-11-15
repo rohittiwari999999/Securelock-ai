@@ -210,7 +210,7 @@ data class LocalSettingsState(
     val customPinLength: Int = 4,
     val perAppLockMethods: Map<String, LockMethod> = emptyMap(),
     val biometricEnabled: Boolean = true,
-    val relockTimeoutSeconds: Int = 30,
+    val relockTimeoutSeconds: Int = -1,
     val lockOnScreenOff: Boolean = true,
     val protectSettingsScreen: Boolean = true,
     val foregroundIntruderPromptEnabled: Boolean = true,
