@@ -69,6 +69,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val settings by repository.settings.collectAsState()
 
+    var showChangePinDialog by remember { mutableStateOf(false) }
     var showChangePatternDialog by remember { mutableStateOf(false) }
     var showSecretDateDialog by remember { mutableStateOf(false) }
     var showPrivacyPolicyDialog by remember { mutableStateOf(false) }
@@ -128,22 +129,67 @@ fun SettingsScreen(
             item {
                 WhiteSecurityCard {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("App Lock Method (Pattern Only)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("Lock Methods (Pattern, PIN & Fingerprint)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Text(
-                            text = if (repository.hasPatternConfigured()) {
-                                "Lock Pattern is active for all protected apps and Vault (no conflicting PIN/Biometric/Decoy gates)."
-                            } else {
-                                "Set a Lock Pattern (4+ dots) to protect your locked apps."
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
+                            text = "Choose your default screen and keep Pattern, PIN, and Fingerprint enabled together.",
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
-                        Button(
-                            onClick = { showChangePatternDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(
+                                listOf(
+                                    LockMethod.PATTERN to "Pattern",
+                                    LockMethod.PIN_4 to "4-Digit PIN",
+                                    LockMethod.PIN_6 to "6-Digit PIN",
+                                    LockMethod.PIN_CUSTOM to "Custom PIN"
+                                )
+                            ) { (method, label) ->
+                                FilterChip(
+                                    selected = settings.preferredLockMethod == method,
+                                    onClick = {
+                                        if (method == LockMethod.PATTERN && !repository.hasPatternConfigured()) {
+                                            showChangePatternDialog = true
+                                        } else if (method != LockMethod.PATTERN && !repository.hasPinConfigured()) {
+                                            showChangePinDialog = true
+                                        } else {
+                                            repository.updateSettings {
+                                                it.copy(
+                                                    preferredLockMethod = method,
+                                                    protectionScreenConfig = it.protectionScreenConfig.copy(enabled = false)
+                                                )
+                                            }
+                                        }
+                                    },
+                                    label = { Text(label) }
+                                )
+                            }
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = { showChangePatternDialog = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                            ) {
+                                Text(if (repository.hasPatternConfigured()) "Change Pattern" else "Set Pattern")
+                            }
+                            OutlinedButton(onClick = { showChangePinDialog = true }) {
+                                Text(if (repository.hasPinConfigured()) "Change PIN" else "Set PIN")
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(if (repository.hasPatternConfigured()) "Change Lock Pattern" else "Set Lock Pattern")
+                            Text("Fingerprint Unlock (BiometricPrompt)", style = MaterialTheme.typography.bodyMedium)
+                            Switch(
+                                checked = settings.biometricEnabled,
+                                onCheckedChange = { enabled ->
+                                    repository.updateSettings { it.copy(biometricEnabled = enabled) }
+                                }
+                            )
                         }
 
                         OutlinedButton(onClick = {
@@ -299,6 +345,69 @@ fun SettingsScreen(
         }
     }
 
+    if (showChangePinDialog) {
+        val alreadyHasPin = remember { repository.hasPinConfigured() }
+        var currentPin by remember { mutableStateOf("") }
+        var newPin by remember { mutableStateOf("") }
+        var confirmPin by remember { mutableStateOf("") }
+        var err by remember { mutableStateOf<String?>(null) }
+
+        AlertDialog(
+            onDismissRequest = { showChangePinDialog = false },
+            title = { Text(if (alreadyHasPin) "Change PIN (4–12 Digits)" else "Set App Lock PIN") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (alreadyHasPin) {
+                        OutlinedTextField(
+                            value = currentPin,
+                            onValueChange = { if (it.length <= 12 && it.all(Char::isDigit)) currentPin = it },
+                            label = { Text("Current PIN") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                            singleLine = true
+                        )
+                    }
+                    OutlinedTextField(
+                        value = newPin,
+                        onValueChange = { if (it.length <= 12 && it.all(Char::isDigit)) newPin = it },
+                        label = { Text("New PIN (4–12 digits)") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = confirmPin,
+                        onValueChange = { if (it.length <= 12 && it.all(Char::isDigit)) confirmPin = it },
+                        label = { Text("Confirm New PIN") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        singleLine = true
+                    )
+                    err?.let { Text(it, color = CrimsonAlert, style = MaterialTheme.typography.labelMedium) }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (alreadyHasPin && !repository.verifyPin(currentPin)) {
+                        err = "Current PIN is incorrect"
+                    } else if (newPin.length < 4) {
+                        err = "New PIN must be 4–12 digits"
+                    } else if (newPin != confirmPin) {
+                        err = "New PINs do not match"
+                    } else {
+                        repository.setPin(newPin)
+                        showChangePinDialog = false
+                    }
+                }) {
+                    Text("Save PIN")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showChangePinDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
     if (showChangePatternDialog) {
         var firstPattern by remember { mutableStateOf<List<Int>?>(null) }
         var patternStatus by remember { mutableStateOf("Draw a pattern connecting at least 4 dots") }
@@ -320,7 +429,6 @@ fun SettingsScreen(
                                 repository.updateSettings {
                                     it.copy(
                                         preferredLockMethod = LockMethod.PATTERN,
-                                        biometricEnabled = false,
                                         protectionScreenConfig = it.protectionScreenConfig.copy(enabled = false)
                                     )
                                 }

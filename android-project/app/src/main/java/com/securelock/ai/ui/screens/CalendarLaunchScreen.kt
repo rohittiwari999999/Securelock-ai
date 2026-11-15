@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
@@ -30,11 +31,14 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -55,6 +59,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
@@ -528,16 +534,20 @@ fun CalendarLaunchScreen(
             }
         }
 
-        // Step 2: Direct Pattern Lock Setup Window (opens immediately after 5 taps on chosen date)
+        // Step 2: Direct App Lock Setup Window (Pattern, PIN & Fingerprint)
         pendingSecretDate?.let { (chosenDay, chosenMonth, _) ->
+            var selectedMethod by remember { mutableStateOf(LockMethod.PATTERN) }
+            var pinInput by remember { mutableStateOf("") }
+            var pinConfirm by remember { mutableStateOf("") }
             var firstPattern by remember { mutableStateOf<List<Int>?>(null) }
             var confirmedPattern by remember { mutableStateOf<List<Int>?>(null) }
             var patternHint by remember { mutableStateOf("Draw your Lock Pattern (4+ dots)") }
+            var enableFingerprint by remember { mutableStateOf(true) }
             var appLockErr by remember { mutableStateOf<String?>(null) }
 
             AlertDialog(
                 onDismissRequest = { pendingSecretDate = null },
-                title = { Text("Step 2: Set Lock Pattern") },
+                title = { Text("Step 2: Set App Lock") },
                 text = {
                     Column(
                         modifier = Modifier.verticalScroll(rememberScrollState()),
@@ -545,45 +555,103 @@ fun CalendarLaunchScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "Draw a lock pattern to protect your locked apps (Pattern Lock only):",
+                            text = "Choose Pattern or PIN and enable Fingerprint unlock for your locked apps:",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.fillMaxWidth()
                         )
 
-                        Text(
-                            text = patternHint,
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (confirmedPattern != null) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            }
-                        )
-
-                        Box(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentAlignment = Alignment.Center
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            PatternLockPad(
-                                onPatternComplete = { nodes ->
+                            FilterChip(
+                                selected = selectedMethod == LockMethod.PATTERN,
+                                onClick = {
+                                    selectedMethod = LockMethod.PATTERN
                                     appLockErr = null
-                                    if (nodes.size < 4) {
-                                        patternHint = "Connect at least 4 dots"
-                                    } else if (firstPattern == null) {
-                                        firstPattern = nodes
-                                        confirmedPattern = null
-                                        patternHint = "Draw the same pattern again to confirm"
-                                    } else if (firstPattern == nodes) {
-                                        confirmedPattern = nodes
-                                        patternHint = "Lock Pattern confirmed!"
-                                    } else {
-                                        firstPattern = null
-                                        confirmedPattern = null
-                                        patternHint = "Patterns did not match. Draw again."
-                                    }
+                                },
+                                label = { Text("Pattern") }
+                            )
+                            FilterChip(
+                                selected = selectedMethod == LockMethod.PIN_4,
+                                onClick = {
+                                    selectedMethod = LockMethod.PIN_4
+                                    appLockErr = null
+                                },
+                                label = { Text("PIN") }
+                            )
+                        }
+
+                        if (selectedMethod == LockMethod.PATTERN) {
+                            Text(
+                                text = patternHint,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (confirmedPattern != null) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
                                 }
+                            )
+
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                PatternLockPad(
+                                    onPatternComplete = { nodes ->
+                                        appLockErr = null
+                                        if (nodes.size < 4) {
+                                            patternHint = "Connect at least 4 dots"
+                                        } else if (firstPattern == null) {
+                                            firstPattern = nodes
+                                            confirmedPattern = null
+                                            patternHint = "Draw the same pattern again to confirm"
+                                        } else if (firstPattern == nodes) {
+                                            confirmedPattern = nodes
+                                            patternHint = "Lock Pattern confirmed!"
+                                        } else {
+                                            firstPattern = null
+                                            confirmedPattern = null
+                                            patternHint = "Patterns did not match. Draw again."
+                                        }
+                                    }
+                                )
+                            }
+                        } else {
+                            OutlinedTextField(
+                                value = pinInput,
+                                onValueChange = { if (it.length <= 12 && it.all(Char::isDigit)) pinInput = it },
+                                label = { Text("App Lock PIN (4–12 digits)") },
+                                visualTransformation = PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = pinConfirm,
+                                onValueChange = { if (it.length <= 12 && it.all(Char::isDigit)) pinConfirm = it },
+                                label = { Text("Confirm PIN") },
+                                visualTransformation = PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Also unlock with Fingerprint",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Switch(
+                                checked = enableFingerprint,
+                                onCheckedChange = { enableFingerprint = it }
                             )
                         }
 
@@ -598,31 +666,50 @@ fun CalendarLaunchScreen(
                 },
                 confirmButton = {
                     Button(onClick = {
-                        val pattern = confirmedPattern
-                        if (pattern == null || pattern.size < 4) {
-                            appLockErr = "Draw and confirm your pattern twice"
-                        } else {
+                        if (selectedMethod == LockMethod.PATTERN) {
+                            val pattern = confirmedPattern
+                            if (pattern == null || pattern.size < 4) {
+                                appLockErr = "Draw and confirm your pattern twice"
+                                return@Button
+                            }
                             repository.setPattern(pattern)
                             repository.updateSettings {
                                 it.copy(
                                     preferredLockMethod = LockMethod.PATTERN,
-                                    biometricEnabled = false,
+                                    biometricEnabled = enableFingerprint,
                                     protectionScreenConfig = it.protectionScreenConfig.copy(enabled = false)
                                 )
                             }
-                            if (!repository.hasRecoveryCodeConfigured()) {
-                                repository.generateAndStoreRecoveryCode()
+                        } else {
+                            if (pinInput.length < 4) {
+                                appLockErr = "Enter a 4–12 digit PIN"
+                                return@Button
                             }
-                            repository.saveSecretDateConfiguration(
-                                day = chosenDay,
-                                month = chosenMonth,
-                                year = null,
-                                enabled = true,
-                                newSecretPin = null
-                            )
-                            appLockConfigured = true
-                            pendingSecretDate = null
+                            if (pinInput != pinConfirm) {
+                                appLockErr = "PINs do not match"
+                                return@Button
+                            }
+                            repository.setPin(pinInput)
+                            repository.updateSettings {
+                                it.copy(
+                                    biometricEnabled = enableFingerprint,
+                                    protectionScreenConfig = it.protectionScreenConfig.copy(enabled = false)
+                                )
+                            }
                         }
+
+                        if (!repository.hasRecoveryCodeConfigured()) {
+                            repository.generateAndStoreRecoveryCode()
+                        }
+                        repository.saveSecretDateConfiguration(
+                            day = chosenDay,
+                            month = chosenMonth,
+                            year = null,
+                            enabled = true,
+                            newSecretPin = null
+                        )
+                        appLockConfigured = true
+                        pendingSecretDate = null
                     }) {
                         Text("Save & Finish")
                     }

@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -45,6 +46,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -77,12 +80,15 @@ fun AppLockScreen(
     var permissions by remember { mutableStateOf(PermissionHelper.getSnapshot(context)) }
     val monitorRunning by AppLockMonitorService.isRunningFlow.collectAsState()
     var hasPattern by remember { mutableStateOf(repository.hasPatternConfigured()) }
+    var hasPin by remember { mutableStateOf(repository.hasPinConfigured()) }
     var showPatternSetupDialog by remember { mutableStateOf(false) }
+    var showPinSetupDialog by remember { mutableStateOf(false) }
     var pendingPermissionPromptApp by remember { mutableStateOf<String?>(null) }
 
     fun refreshAndSyncEngine() {
         permissions = PermissionHelper.getSnapshot(context)
         hasPattern = repository.hasPatternConfigured()
+        hasPin = repository.hasPinConfigured()
         AppLockServiceController.syncMonitorService(context, repository.settings.value)
     }
 
@@ -138,7 +144,7 @@ fun AppLockScreen(
                     packageName = pkg,
                     appName = label,
                     isLocked = settings.protectedPackages.contains(pkg),
-                    overrideMethod = LockMethod.PATTERN
+                    overrideMethod = settings.preferredLockMethod
                 )
             }
             .sortedWith(compareByDescending<InstalledAppItem> { it.isLocked }.thenBy { it.appName.lowercase() })
@@ -152,12 +158,18 @@ fun AppLockScreen(
         }
     }
 
+    val activeMethodSummary = buildList {
+        if (hasPattern) add("Pattern")
+        if (hasPin) add("PIN")
+        if (settings.biometricEnabled) add("Fingerprint")
+    }.joinToString(" · ").ifEmpty { "Set Pattern or PIN" }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             SecureTopBar(
                 title = "App Lock",
-                subtitle = "${settings.protectedPackages.size} apps · Lock Pattern Only",
+                subtitle = "${settings.protectedPackages.size} apps · $activeMethodSummary",
                 onBack = onBack
             )
         }
@@ -210,21 +222,15 @@ fun AppLockScreen(
                         Text(
                             text = if (engineActive) {
                                 if (permissions.accessibilityEnabled) {
-                                    "Accessibility Lock Pattern engine active (single-engine mode — zero conflict)."
+                                    "Accessibility engine active (single-engine mode — zero conflict)."
                                 } else {
-                                    "Usage Access + Overlay Lock Pattern engine active."
+                                    "Usage Access + Overlay engine active."
                                 }
                             } else {
-                                "To lock WhatsApp and other apps with your Lock Pattern, enable Accessibility Service (recommended) or Display Over Other Apps + Usage Access:"
+                                "To lock WhatsApp and other apps, enable Accessibility Service (recommended) or Display Over Other Apps + Usage Access:"
                             },
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Text(
-                            text = "• Lock Pattern: ${if (hasPattern) "Configured (Pattern Only)" else "Not set yet"}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (hasPattern) EmeraldSafe else CrimsonAlert
                         )
 
                         Text(
@@ -245,14 +251,6 @@ fun AppLockScreen(
                         )
 
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            item {
-                                Button(
-                                    onClick = { showPatternSetupDialog = true },
-                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                                ) {
-                                    Text(if (hasPattern) "Change Lock Pattern" else "Set Lock Pattern")
-                                }
-                            }
                             if (!permissions.accessibilityEnabled) {
                                 item {
                                     Button(
@@ -311,6 +309,98 @@ fun AppLockScreen(
             item {
                 WhiteSecurityCard {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "Lock Methods (Pattern · PIN · Fingerprint)",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Use Pattern, PIN, and Fingerprint together on one unified lock screen.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = settings.preferredLockMethod == LockMethod.PATTERN,
+                                onClick = {
+                                    if (hasPattern) {
+                                        repository.updateSettings {
+                                            it.copy(
+                                                preferredLockMethod = LockMethod.PATTERN,
+                                                protectionScreenConfig = it.protectionScreenConfig.copy(enabled = false)
+                                            )
+                                        }
+                                    } else {
+                                        showPatternSetupDialog = true
+                                    }
+                                },
+                                label = { Text("Default: Pattern") }
+                            )
+                            FilterChip(
+                                selected = settings.preferredLockMethod == LockMethod.PIN_4 ||
+                                    settings.preferredLockMethod == LockMethod.PIN_6 ||
+                                    settings.preferredLockMethod == LockMethod.PIN_CUSTOM,
+                                onClick = {
+                                    if (hasPin) {
+                                        val pinMethod = when (repository.configuredPinLength()) {
+                                            6 -> LockMethod.PIN_6
+                                            4 -> LockMethod.PIN_4
+                                            else -> LockMethod.PIN_CUSTOM
+                                        }
+                                        repository.updateSettings {
+                                            it.copy(
+                                                preferredLockMethod = pinMethod,
+                                                protectionScreenConfig = it.protectionScreenConfig.copy(enabled = false)
+                                            )
+                                        }
+                                    } else {
+                                        showPinSetupDialog = true
+                                    }
+                                },
+                                label = { Text("Default: PIN") }
+                            )
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = { showPatternSetupDialog = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                            ) {
+                                Text(if (hasPattern) "Change Pattern" else "Set Pattern")
+                            }
+                            OutlinedButton(onClick = { showPinSetupDialog = true }) {
+                                Text(if (hasPin) "Change PIN" else "Set PIN")
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Fingerprint Unlock", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    "Allow Fingerprint alongside Pattern & PIN",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = settings.biometricEnabled,
+                                onCheckedChange = { enabled ->
+                                    repository.updateSettings { it.copy(biometricEnabled = enabled) }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                WhiteSecurityCard {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -319,7 +409,7 @@ fun AppLockScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Protect Android Settings", style = MaterialTheme.typography.titleMedium)
                                 Text(
-                                    "Require Lock Pattern when System Settings opens",
+                                    "Require Pattern, PIN or Fingerprint when Settings opens",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -398,7 +488,7 @@ fun AppLockScreen(
                             Text(app.appName, style = MaterialTheme.typography.titleMedium)
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = if (app.isLocked) "${app.packageName} · Pattern Lock" else app.packageName,
+                                text = if (app.isLocked) "${app.packageName} · $activeMethodSummary" else app.packageName,
                                 style = MaterialTheme.typography.labelMedium,
                                 color = if (app.isLocked) EmeraldSafe else MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -414,12 +504,10 @@ fun AppLockScreen(
                                     }
                                     current.copy(
                                         protectedPackages = updatedSet,
-                                        preferredLockMethod = LockMethod.PATTERN,
-                                        biometricEnabled = false,
                                         protectionScreenConfig = current.protectionScreenConfig.copy(enabled = false)
                                     )
                                 }
-                                if (shouldLock && !repository.hasPatternConfigured()) {
+                                if (shouldLock && !repository.hasPatternConfigured() && !repository.hasPinConfigured()) {
                                     showPatternSetupDialog = true
                                 } else if (shouldLock && !AppLockServiceController.hasRequiredOverlayOrAccessibility(context)) {
                                     pendingPermissionPromptApp = app.appName
@@ -465,7 +553,6 @@ fun AppLockScreen(
                                     repository.updateSettings {
                                         it.copy(
                                             preferredLockMethod = LockMethod.PATTERN,
-                                            biometricEnabled = false,
                                             protectionScreenConfig = it.protectionScreenConfig.copy(enabled = false)
                                         )
                                     }
@@ -490,6 +577,61 @@ fun AppLockScreen(
         )
     }
 
+    if (showPinSetupDialog) {
+        var newPin by remember { mutableStateOf("") }
+        var confirmPin by remember { mutableStateOf("") }
+        var pinErr by remember { mutableStateOf<String?>(null) }
+        AlertDialog(
+            onDismissRequest = { showPinSetupDialog = false },
+            title = { Text(if (hasPin) "Change App Lock PIN" else "Set App Lock PIN") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = newPin,
+                        onValueChange = { if (it.length <= 12 && it.all(Char::isDigit)) newPin = it },
+                        label = { Text("PIN (4–12 digits)") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = confirmPin,
+                        onValueChange = { if (it.length <= 12 && it.all(Char::isDigit)) confirmPin = it },
+                        label = { Text("Confirm PIN") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        singleLine = true
+                    )
+                    pinErr?.let { Text(it, color = CrimsonAlert, style = MaterialTheme.typography.labelMedium) }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (newPin.length < 4) {
+                        pinErr = "PIN must be 4–12 digits"
+                    } else if (newPin != confirmPin) {
+                        pinErr = "PINs do not match"
+                    } else {
+                        repository.setPin(newPin)
+                        repository.updateSettings {
+                            it.copy(protectionScreenConfig = it.protectionScreenConfig.copy(enabled = false))
+                        }
+                        hasPin = true
+                        showPinSetupDialog = false
+                        if (!AppLockServiceController.hasRequiredOverlayOrAccessibility(context)) {
+                            pendingPermissionPromptApp = "Protected Apps"
+                        }
+                    }
+                }) {
+                    Text("Save PIN")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPinSetupDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
     pendingPermissionPromptApp?.let { appName ->
         AlertDialog(
             onDismissRequest = { pendingPermissionPromptApp = null },
@@ -497,7 +639,7 @@ fun AppLockScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "$appName is protected with your Lock Pattern. Enable Accessibility Monitor (instant) or Display Over Other Apps + Usage Access below:",
+                        text = "$appName is protected. Enable Accessibility Monitor (instant) or Display Over Other Apps + Usage Access below:",
                         style = MaterialTheme.typography.bodySmall
                     )
                     if (!permissions.accessibilityEnabled) {

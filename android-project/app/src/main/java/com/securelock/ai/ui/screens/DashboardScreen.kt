@@ -86,7 +86,7 @@ fun DashboardScreen(
     val cards = listOf(
         DashboardModuleCard(
             title = "App Lock",
-            subtitle = "Lock Pattern protection for installed apps",
+            subtitle = "Pattern, PIN & Fingerprint app protection",
             metric = "${settings.protectedPackages.size} Locked",
             icon = Icons.Default.Lock,
             accent = primary,

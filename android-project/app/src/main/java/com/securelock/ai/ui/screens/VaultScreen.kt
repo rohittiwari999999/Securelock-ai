@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Photo
@@ -194,8 +195,42 @@ fun VaultScreen(
     }
 
     if (!vaultGateUnlocked) {
-        val usePatternGate = remember(settings.preferredLockMethod) {
-            repository.hasPatternConfigured()
+        val hasPattern = remember(settings.preferredLockMethod) { repository.hasPatternConfigured() }
+        val hasPin = remember(settings.preferredLockMethod) { repository.hasPinConfigured() }
+        val bioAvailable = remember(activity) {
+            BiometricAuthManager.checkAvailability(activity) is BiometricAvailability.Available
+        }
+        val fingerprintReady = settings.biometricEnabled && bioAvailable
+        var usePatternMode by remember(settings.preferredLockMethod, hasPattern, hasPin) {
+            mutableStateOf(
+                when {
+                    settings.preferredLockMethod == com.securelock.ai.data.LockMethod.PATTERN && hasPattern -> true
+                    hasPin -> false
+                    else -> hasPattern
+                }
+            )
+        }
+
+        fun launchVaultBiometric() {
+            if (!fingerprintReady) return
+            BiometricAuthManager.authenticate(
+                activity = activity,
+                title = "Unlock Secret Gallery Vault",
+                subtitle = "Verify fingerprint to decrypt your private albums",
+                negativeButtonText = "Use Pattern / PIN",
+                onSuccess = {
+                    AppLockSessionManager.unlockMediaVault()
+                    vaultGateUnlocked = true
+                },
+                onFailedAttempt = { gateError = "Fingerprint did not match" },
+                onError = { gateError = it }
+            )
+        }
+
+        LaunchedEffect(fingerprintReady) {
+            if (fingerprintReady) {
+                launchVaultBiometric()
+            }
         }
 
         Scaffold(
@@ -226,17 +261,36 @@ fun VaultScreen(
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = if (usePatternGate) {
-                        "Draw your Lock Pattern to access AES-256-GCM encrypted photos and videos."
-                    } else {
-                        "Enter your PIN to access AES-256-GCM encrypted photos and videos."
-                    },
+                    text = "Use Pattern, PIN, or Fingerprint to access AES-256-GCM encrypted photos and videos.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.78f)
                 )
+
+                if (hasPattern && hasPin) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = usePatternMode,
+                            onClick = {
+                                usePatternMode = true
+                                gateError = null
+                            },
+                            label = { Text("Pattern") }
+                        )
+                        FilterChip(
+                            selected = !usePatternMode,
+                            onClick = {
+                                usePatternMode = false
+                                gateError = null
+                            },
+                            label = { Text("PIN") }
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
 
-                if (usePatternGate) {
+                if (usePatternMode && hasPattern) {
                     PatternLockPad(
                         onPatternComplete = { nodes ->
                             if (nodes.size < 4) {
@@ -254,11 +308,18 @@ fun VaultScreen(
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(it, color = CrimsonAlert, style = MaterialTheme.typography.labelMedium)
                     }
+                    if (fingerprintReady) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedButton(onClick = { launchVaultBiometric() }) {
+                            Icon(Icons.Default.Fingerprint, contentDescription = null)
+                            Text("  Use Fingerprint")
+                        }
+                    }
                 } else {
                     OutlinedTextField(
                         value = gatePinInput,
                         onValueChange = { if (it.length <= 12 && it.all(Char::isDigit)) gatePinInput = it },
-                        label = { Text("Master PIN") },
+                        label = { Text("App Lock PIN") },
                         visualTransformation = PasswordVisualTransformation(),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
@@ -272,20 +333,28 @@ fun VaultScreen(
                         Text(it, color = CrimsonAlert, style = MaterialTheme.typography.labelMedium)
                     }
                     Spacer(modifier = Modifier.height(12.dp))
-                    Button(
-                        onClick = {
-                            if (repository.verifyPin(gatePinInput)) {
-                                AppLockSessionManager.unlockMediaVault()
-                                vaultGateUnlocked = true
-                                gatePinInput = ""
-                            } else {
-                                gateError = "Incorrect PIN"
-                                gatePinInput = ""
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(
+                            onClick = {
+                                if (repository.verifyPin(gatePinInput)) {
+                                    AppLockSessionManager.unlockMediaVault()
+                                    vaultGateUnlocked = true
+                                    gatePinInput = ""
+                                } else {
+                                    gateError = "Incorrect PIN"
+                                    gatePinInput = ""
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Unlock Vault")
+                        }
+                        if (fingerprintReady) {
+                            OutlinedButton(onClick = { launchVaultBiometric() }) {
+                                Icon(Icons.Default.Fingerprint, contentDescription = null)
+                                Text("  Fingerprint")
                             }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Unlock Vault")
+                        }
                     }
                 }
             }

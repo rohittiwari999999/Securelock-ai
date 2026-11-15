@@ -9,8 +9,10 @@ import {
   ChevronLeft,
   ChevronRight,
   CloudOff,
+  Delete,
   Download,
   Edit3,
+  Fingerprint,
   FolderPlus,
   Globe,
   Grid,
@@ -242,7 +244,12 @@ const INITIAL_APPS: SimApp[] = [
 export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulatorProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const [masterPin, setMasterPin] = useState('2580');
   const [savedPattern, setSavedPattern] = useState<number[]>([0, 1, 4, 7]);
+  const [defaultOverlayMode, setDefaultOverlayMode] = useState<'PATTERN' | 'PIN'>('PATTERN');
+  const [activeOverlayMode, setActiveOverlayMode] = useState<'PATTERN' | 'PIN'>('PATTERN');
+  const [biometricEnabled, setBiometricEnabled] = useState(true);
+  const [enteredPin, setEnteredPin] = useState('');
   const [enteredPattern, setEnteredPattern] = useState<number[]>([]);
   const [authError, setAuthError] = useState(false);
 
@@ -264,6 +271,9 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
         secretMonth: number;
         secretYear: string;
         secretPin?: string;
+        masterPin?: string;
+        defaultMode?: 'PATTERN' | 'PIN';
+        biometric?: boolean;
         pattern: number[];
       }) : null;
     } catch {
@@ -274,6 +284,10 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
   const [simAppLockConfigured, setSimAppLockConfigured] = useState<boolean>(savedSimSetup?.done ?? false);
   const [pendingChosenDate, setPendingChosenDate] = useState<{ day: number; month: number; year: number } | null>(null);
 
+  const [setupMethodChoice, setSetupMethodChoice] = useState<'PATTERN' | 'PIN'>('PATTERN');
+  const [setupPinDraft, setSetupPinDraft] = useState('');
+  const [setupPinConfirmDraft, setSetupPinConfirmDraft] = useState('');
+  const [setupBioChoice, setSetupBioChoice] = useState(true);
   const [setupFirstPattern, setSetupFirstPattern] = useState<number[] | null>(null);
   const [setupConfirmedPattern, setSetupConfirmedPattern] = useState<number[] | null>(null);
   const [setupPatternDraft, setSetupPatternDraft] = useState<number[]>([]);
@@ -287,8 +301,20 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
   const [secretPin, setSecretPin] = useState(savedSimSetup?.secretPin ?? '2580');
 
   useEffect(() => {
-    if (savedSimSetup?.done && Array.isArray(savedSimSetup.pattern) && savedSimSetup.pattern.length >= 4) {
-      setSavedPattern(savedSimSetup.pattern);
+    if (savedSimSetup?.done) {
+      if (Array.isArray(savedSimSetup.pattern) && savedSimSetup.pattern.length >= 4) {
+        setSavedPattern(savedSimSetup.pattern);
+      }
+      if (savedSimSetup.masterPin && savedSimSetup.masterPin.length >= 4) {
+        setMasterPin(savedSimSetup.masterPin);
+      }
+      if (savedSimSetup.defaultMode) {
+        setDefaultOverlayMode(savedSimSetup.defaultMode);
+        setActiveOverlayMode(savedSimSetup.defaultMode);
+      }
+      if (typeof savedSimSetup.biometric === 'boolean') {
+        setBiometricEnabled(savedSimSetup.biometric);
+      }
     }
   }, [savedSimSetup]);
 
@@ -338,6 +364,8 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
 
   // Secret Gallery Vault State
   const [vaultUnlocked, setVaultUnlocked] = useState(false);
+  const [vaultGateMode, setVaultGateMode] = useState<'PATTERN' | 'PIN'>('PATTERN');
+  const [vaultPinInput, setVaultPinInput] = useState('');
   const [vaultPatternDraft, setVaultPatternDraft] = useState<number[]>([]);
   const [vaultPinError, setVaultPinError] = useState<string | null>(null);
   const [vaultAlbums, setVaultAlbums] = useState<SimVaultAlbum[]>([
@@ -468,6 +496,9 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
   const [urlInput, setUrlInput] = useState('https://duckduckgo.com');
   const [httpWarningUrl, setHttpWarningUrl] = useState<string | null>(null);
 
+  const [pinEditorOpen, setPinEditorOpen] = useState(false);
+  const [newPinDraft, setNewPinDraft] = useState('');
+  const [confirmPinDraft, setConfirmPinDraft] = useState('');
   const [patternEditorOpen, setPatternEditorOpen] = useState(false);
   const [newPatternDraft, setNewPatternDraft] = useState<number[]>([]);
 
@@ -601,7 +632,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
     {
       id: 'app_lock',
       title: 'App Lock',
-      subtitle: 'Lock Pattern protection',
+      subtitle: 'Pattern, PIN & Fingerprint',
       metric: `${lockedCount} Locked`,
       icon: Lock,
     },
@@ -960,73 +991,127 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
               {pendingChosenDate && !simAppLockConfigured && (
                 <div className="absolute inset-0 bg-black/50 flex items-center justify-center p-4 z-30">
                   <div className="bg-white rounded-3xl p-5 w-full max-w-[310px] shadow-2xl space-y-3 text-[#1F1F1F] max-h-[610px] overflow-y-auto">
-                    <div className="text-base font-bold">Step 2: Set Lock Pattern</div>
+                    <div className="text-base font-bold">Step 2: Set App Lock</div>
                     <p className="text-[11px] text-[#5F6368]">
-                      Draw a lock pattern to protect your locked apps (Pattern Lock only):
+                      Choose Pattern or PIN and enable Fingerprint unlock for your locked apps:
                     </p>
 
-                    <div className="space-y-2">
-                      <div className="text-[11px] font-medium text-[#1A73E8]">{setupPatternHint}</div>
-                      <div className="grid grid-cols-3 gap-2 max-w-[165px] mx-auto bg-slate-100 p-3 rounded-2xl">
-                        {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => {
-                          const idx = setupPatternDraft.indexOf(n);
-                          return (
-                            <button
-                              key={n}
-                              type="button"
-                              onClick={() =>
-                                !setupPatternDraft.includes(n) &&
-                                setSetupPatternDraft([...setupPatternDraft, n])
-                              }
-                              className={`h-9 rounded-full text-xs font-bold ${
-                                idx >= 0
-                                  ? 'bg-[#1A73E8] text-white'
-                                  : 'bg-white text-slate-700 border border-slate-300'
-                              }`}
-                            >
-                              {idx >= 0 ? idx + 1 : n + 1}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <div className="flex justify-center gap-2">
+                    <div className="flex gap-1.5">
+                      {(['PATTERN', 'PIN'] as const).map((m) => (
                         <button
-                          type="button"
-                          onClick={() => setSetupPatternDraft([])}
-                          className="px-2.5 py-1 rounded-lg bg-slate-100 text-[11px]"
-                        >
-                          Clear
-                        </button>
-                        <button
+                          key={m}
                           type="button"
                           onClick={() => {
-                            if (setupPatternDraft.length < 4) {
-                              setSetupPatternHint('Connect at least 4 nodes');
-                              return;
-                            }
-                            if (!setupFirstPattern) {
-                              setSetupFirstPattern(setupPatternDraft);
-                              setSetupPatternDraft([]);
-                              setSetupPatternHint('Tap same pattern again to confirm');
-                            } else if (
-                              setupFirstPattern.length === setupPatternDraft.length &&
-                              setupFirstPattern.every((v, i) => v === setupPatternDraft[i])
-                            ) {
-                              setSetupConfirmedPattern(setupPatternDraft);
-                              setSetupPatternDraft([]);
-                              setSetupPatternHint('Lock Pattern confirmed!');
-                            } else {
-                              setSetupFirstPattern(null);
-                              setSetupConfirmedPattern(null);
-                              setSetupPatternDraft([]);
-                              setSetupPatternHint('Did not match. Draw again.');
-                            }
+                            setSetupMethodChoice(m);
+                            setAppLockModalError(null);
                           }}
-                          className="px-3 py-1 rounded-lg bg-[#1A73E8] text-white text-[11px] font-semibold"
+                          className={`px-3 py-1 rounded-lg text-xs font-semibold ${
+                            setupMethodChoice === m
+                              ? 'bg-[#1A73E8] text-white'
+                              : 'bg-slate-100 text-slate-700'
+                          }`}
                         >
-                          {setupFirstPattern ? 'Confirm Pattern' : 'Set First Pattern'}
+                          {m === 'PATTERN' ? 'Pattern' : 'PIN'}
                         </button>
+                      ))}
+                    </div>
+
+                    {setupMethodChoice === 'PATTERN' ? (
+                      <div className="space-y-2">
+                        <div className="text-[11px] font-medium text-[#1A73E8]">{setupPatternHint}</div>
+                        <div className="grid grid-cols-3 gap-2 max-w-[165px] mx-auto bg-slate-100 p-3 rounded-2xl">
+                          {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => {
+                            const idx = setupPatternDraft.indexOf(n);
+                            return (
+                              <button
+                                key={n}
+                                type="button"
+                                onClick={() =>
+                                  !setupPatternDraft.includes(n) &&
+                                  setSetupPatternDraft([...setupPatternDraft, n])
+                                }
+                                className={`h-9 rounded-full text-xs font-bold ${
+                                  idx >= 0
+                                    ? 'bg-[#1A73E8] text-white'
+                                    : 'bg-white text-slate-700 border border-slate-300'
+                                }`}
+                              >
+                                {idx >= 0 ? idx + 1 : n + 1}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="flex justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSetupPatternDraft([])}
+                            className="px-2.5 py-1 rounded-lg bg-slate-100 text-[11px]"
+                          >
+                            Clear
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (setupPatternDraft.length < 4) {
+                                setSetupPatternHint('Connect at least 4 nodes');
+                                return;
+                              }
+                              if (!setupFirstPattern) {
+                                setSetupFirstPattern(setupPatternDraft);
+                                setSetupPatternDraft([]);
+                                setSetupPatternHint('Tap same pattern again to confirm');
+                              } else if (
+                                setupFirstPattern.length === setupPatternDraft.length &&
+                                setupFirstPattern.every((v, i) => v === setupPatternDraft[i])
+                              ) {
+                                setSetupConfirmedPattern(setupPatternDraft);
+                                setSetupPatternDraft([]);
+                                setSetupPatternHint('Lock Pattern confirmed!');
+                              } else {
+                                setSetupFirstPattern(null);
+                                setSetupConfirmedPattern(null);
+                                setSetupPatternDraft([]);
+                                setSetupPatternHint('Did not match. Draw again.');
+                              }
+                            }}
+                            className="px-3 py-1 rounded-lg bg-[#1A73E8] text-white text-[11px] font-semibold"
+                          >
+                            {setupFirstPattern ? 'Confirm Pattern' : 'Set First Pattern'}
+                          </button>
+                        </div>
                       </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <input
+                          type="password"
+                          maxLength={12}
+                          value={setupPinDraft}
+                          onChange={(e) => setSetupPinDraft(e.target.value.replace(/\D/g, ''))}
+                          placeholder="Enter PIN (4–12 digits)"
+                          className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white"
+                        />
+                        <input
+                          type="password"
+                          maxLength={12}
+                          value={setupPinConfirmDraft}
+                          onChange={(e) => setSetupPinConfirmDraft(e.target.value.replace(/\D/g, ''))}
+                          placeholder="Confirm PIN"
+                          className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white"
+                        />
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-[11px] font-medium">Also unlock with Fingerprint</span>
+                      <button
+                        type="button"
+                        onClick={() => setSetupBioChoice(!setupBioChoice)}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold ${
+                          setupBioChoice ? 'bg-[#1A73E8] text-white' : 'bg-slate-200 text-slate-700'
+                        }`}
+                      >
+                        {setupBioChoice ? 'On' : 'Off'}
+                      </button>
                     </div>
 
                     {appLockModalError && (
@@ -1044,11 +1129,26 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                       <button
                         type="button"
                         onClick={() => {
-                          if (!setupConfirmedPattern || setupConfirmedPattern.length < 4) {
-                            setAppLockModalError('Confirm your pattern twice first');
-                            return;
+                          if (setupMethodChoice === 'PATTERN') {
+                            if (!setupConfirmedPattern || setupConfirmedPattern.length < 4) {
+                              setAppLockModalError('Confirm your pattern twice first');
+                              return;
+                            }
+                            setSavedPattern(setupConfirmedPattern);
+                          } else {
+                            if (setupPinDraft.length < 4) {
+                              setAppLockModalError('PIN must be 4–12 digits');
+                              return;
+                            }
+                            if (setupPinDraft !== setupPinConfirmDraft) {
+                              setAppLockModalError('PINs do not match');
+                              return;
+                            }
+                            setMasterPin(setupPinDraft);
                           }
-                          setSavedPattern(setupConfirmedPattern);
+                          setDefaultOverlayMode(setupMethodChoice);
+                          setActiveOverlayMode(setupMethodChoice);
+                          setBiometricEnabled(setupBioChoice);
                           setSecretDay(pendingChosenDate.day);
                           setSecretMonth(pendingChosenDate.month);
                           setSecretYear('');
@@ -1065,7 +1165,10 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                                 secretMonth: pendingChosenDate.month,
                                 secretYear: '',
                                 secretPin: secretPin,
-                                pattern: setupConfirmedPattern,
+                                masterPin: setupMethodChoice === 'PIN' ? setupPinDraft : masterPin,
+                                defaultMode: setupMethodChoice,
+                                biometric: setupBioChoice,
+                                pattern: setupConfirmedPattern ?? savedPattern,
                               })
                             );
                           } catch {
@@ -1224,67 +1327,147 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                         <Lock className="w-9 h-9 mx-auto" style={{ color: activeTheme.accent }} />
                         <div className="text-sm font-bold">Vault Locked</div>
                         <p className="text-xs opacity-75">
-                          Draw your Lock Pattern ({savedPattern.map((n) => n + 1).join(' → ')}) to decrypt private albums.
+                          Use Pattern, PIN ({masterPin}), or Fingerprint to decrypt private albums.
                         </p>
-                        <div className="grid grid-cols-3 gap-2 max-w-[156px] mx-auto bg-slate-100 p-3 rounded-2xl">
-                          {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => {
-                            const idx = vaultPatternDraft.indexOf(n);
-                            return (
-                              <button
-                                key={n}
-                                type="button"
-                                onClick={() =>
-                                  !vaultPatternDraft.includes(n) &&
-                                  setVaultPatternDraft([...vaultPatternDraft, n])
-                                }
-                                className="h-9 rounded-full text-xs font-bold"
-                                style={
-                                  idx >= 0
-                                    ? { backgroundColor: activeTheme.accent, color: '#FFFFFF' }
-                                    : { backgroundColor: '#FFFFFF', color: '#0A1628', border: '1px solid #CBD5E1' }
-                                }
-                              >
-                                {idx >= 0 ? idx + 1 : n + 1}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        {vaultPinError && (
-                          <div className="text-xs text-rose-500 font-medium">{vaultPinError}</div>
-                        )}
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setVaultPatternDraft([]);
-                              setVaultPinError(null);
-                            }}
-                            className="px-3 py-2 rounded-xl bg-slate-200 text-[#0A1628] text-xs font-semibold"
-                          >
-                            Clear
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const ok =
-                                vaultPatternDraft.length >= 4 &&
-                                vaultPatternDraft.length === savedPattern.length &&
-                                vaultPatternDraft.every((v, i) => v === savedPattern[i]);
-                              if (ok) {
-                                setVaultUnlocked(true);
-                                setVaultPatternDraft([]);
+                        <div className="flex justify-center gap-1.5">
+                          {(['PATTERN', 'PIN'] as const).map((m) => (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => {
+                                setVaultGateMode(m);
                                 setVaultPinError(null);
-                              } else {
-                                setVaultPatternDraft([]);
-                                setVaultPinError('Incorrect Lock Pattern');
+                              }}
+                              className="px-2.5 py-1 rounded-lg text-[10px] font-semibold"
+                              style={
+                                vaultGateMode === m
+                                  ? { backgroundColor: activeTheme.accent, color: '#FFFFFF' }
+                                  : { backgroundColor: 'rgba(148,163,184,0.2)' }
                               }
-                            }}
-                            className="flex-1 py-2 rounded-xl text-white text-xs font-semibold"
-                            style={{ backgroundColor: activeTheme.accent }}
-                          >
-                            Unlock Vault
-                          </button>
+                            >
+                              {m === 'PATTERN' ? 'Pattern' : 'PIN'}
+                            </button>
+                          ))}
                         </div>
+                        {vaultGateMode === 'PATTERN' ? (
+                          <>
+                            <div className="grid grid-cols-3 gap-2 max-w-[156px] mx-auto bg-slate-100 p-3 rounded-2xl">
+                              {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => {
+                                const idx = vaultPatternDraft.indexOf(n);
+                                return (
+                                  <button
+                                    key={n}
+                                    type="button"
+                                    onClick={() =>
+                                      !vaultPatternDraft.includes(n) &&
+                                      setVaultPatternDraft([...vaultPatternDraft, n])
+                                    }
+                                    className="h-9 rounded-full text-xs font-bold"
+                                    style={
+                                      idx >= 0
+                                        ? { backgroundColor: activeTheme.accent, color: '#FFFFFF' }
+                                        : { backgroundColor: '#FFFFFF', color: '#0A1628', border: '1px solid #CBD5E1' }
+                                    }
+                                  >
+                                    {idx >= 0 ? idx + 1 : n + 1}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {vaultPinError && (
+                              <div className="text-xs text-rose-500 font-medium">{vaultPinError}</div>
+                            )}
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setVaultPatternDraft([]);
+                                  setVaultPinError(null);
+                                }}
+                                className="px-3 py-2 rounded-xl bg-slate-200 text-[#0A1628] text-xs font-semibold"
+                              >
+                                Clear
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const ok =
+                                    vaultPatternDraft.length >= 4 &&
+                                    vaultPatternDraft.length === savedPattern.length &&
+                                    vaultPatternDraft.every((v, i) => v === savedPattern[i]);
+                                  if (ok) {
+                                    setVaultUnlocked(true);
+                                    setVaultPatternDraft([]);
+                                    setVaultPinError(null);
+                                  } else {
+                                    setVaultPatternDraft([]);
+                                    setVaultPinError('Incorrect Lock Pattern');
+                                  }
+                                }}
+                                className="flex-1 py-2 rounded-xl text-white text-xs font-semibold"
+                                style={{ backgroundColor: activeTheme.accent }}
+                              >
+                                Unlock
+                              </button>
+                              {biometricEnabled && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setVaultUnlocked(true);
+                                    setVaultPinError(null);
+                                  }}
+                                  className="px-3 py-2 rounded-xl bg-slate-200 text-[#0A1628] text-xs font-semibold inline-flex items-center gap-1"
+                                >
+                                  <Fingerprint className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <input
+                              type="password"
+                              value={vaultPinInput}
+                              onChange={(e) => setVaultPinInput(e.target.value.replace(/\D/g, ''))}
+                              placeholder="Enter PIN"
+                              className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs text-[#0A1628] bg-white"
+                            />
+                            {vaultPinError && (
+                              <div className="text-xs text-rose-500 font-medium">{vaultPinError}</div>
+                            )}
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (vaultPinInput === masterPin) {
+                                    setVaultUnlocked(true);
+                                    setVaultPinInput('');
+                                    setVaultPinError(null);
+                                  } else {
+                                    setVaultPinError('Incorrect PIN');
+                                  }
+                                }}
+                                className="flex-1 py-2 rounded-xl text-white text-xs font-semibold"
+                                style={{ backgroundColor: activeTheme.accent }}
+                              >
+                                Unlock PIN
+                              </button>
+                              {biometricEnabled && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setVaultUnlocked(true);
+                                    setVaultPinError(null);
+                                  }}
+                                  className="px-3 py-2 rounded-xl bg-slate-200 text-[#0A1628] text-xs font-semibold inline-flex items-center gap-1"
+                                >
+                                  <Fingerprint className="w-3.5 h-3.5" />
+                                  <span>Bio</span>
+                                </button>
+                              )}
+                            </div>
+                          </>
+                        )}
                       </div>
                     ) : (
                       <>
@@ -1642,12 +1825,14 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                                 onClick={() => {
                                   setLaunchedTargetApp(app.name);
                                   setEnteredPattern([]);
+                                  setEnteredPin('');
+                                  setActiveOverlayMode(defaultOverlayMode);
                                   setAuthError(false);
                                   setPatternOverlayTarget(app.name);
                                 }}
                                 className="px-2 py-1 rounded-lg bg-slate-200 text-[#0A1628] text-[10px] font-medium"
                               >
-                                Test Pattern
+                                Test Lock
                               </button>
                             )}
                             <button
@@ -1673,7 +1858,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
 
                         {app.locked && (
                           <div className="text-[10px] font-medium text-emerald-600">
-                            Protected with Lock Pattern only
+                            Protected: Pattern · PIN{biometricEnabled ? ' · Fingerprint' : ''}
                           </div>
                         )}
                       </div>
@@ -2359,20 +2544,82 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                       className={`${cardClasses} p-3.5 space-y-2`}
                       style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
                     >
-                      <div className="text-xs font-bold">App Lock Method (Pattern Only)</div>
+                      <div className="text-xs font-bold">Lock Methods (Pattern, PIN &amp; Fingerprint)</div>
                       <p className="text-[11px] opacity-75">
-                        Lock Pattern is active for all protected apps &amp; Vault (no conflicting unlock gates).
+                        Keep Pattern, PIN, and Fingerprint enabled together without conflicting gates.
                       </p>
+                      <div className="flex gap-1.5">
+                        {(['PATTERN', 'PIN'] as const).map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => {
+                              setDefaultOverlayMode(m);
+                              setActiveOverlayMode(m);
+                            }}
+                            className="px-2.5 py-1 rounded-lg text-[10px] font-semibold"
+                            style={
+                              defaultOverlayMode === m
+                                ? { backgroundColor: activeTheme.accent, color: '#FFFFFF' }
+                                : { backgroundColor: 'rgba(148,163,184,0.2)' }
+                            }
+                          >
+                            Default: {m === 'PATTERN' ? 'Pattern' : 'PIN'}
+                          </button>
+                        ))}
+                      </div>
                       <div className="flex flex-wrap gap-1.5 pt-1">
                         <button
                           type="button"
                           onClick={() => setPatternEditorOpen(!patternEditorOpen)}
-                          className="px-3 py-1.5 rounded-lg text-white text-[11px] font-semibold"
+                          className="px-2.5 py-1.5 rounded-lg text-white text-[11px] font-semibold"
                           style={{ backgroundColor: activeTheme.accent }}
                         >
-                          {patternEditorOpen ? 'Close Pattern Editor' : 'Change Lock Pattern'}
+                          {patternEditorOpen ? 'Close Pattern' : 'Change Pattern'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPinEditorOpen(!pinEditorOpen)}
+                          className="px-2.5 py-1.5 rounded-lg bg-slate-200 text-[#0A1628] text-[11px] font-medium"
+                        >
+                          {pinEditorOpen ? 'Close PIN' : 'Change PIN'}
                         </button>
                       </div>
+                      {pinEditorOpen && (
+                        <div className="space-y-1.5 pt-1">
+                          <input
+                            type="password"
+                            maxLength={12}
+                            value={newPinDraft}
+                            onChange={(e) => setNewPinDraft(e.target.value.replace(/\D/g, ''))}
+                            placeholder="New 4–12 digit PIN"
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs text-[#0A1628] bg-white"
+                          />
+                          <input
+                            type="password"
+                            maxLength={12}
+                            value={confirmPinDraft}
+                            onChange={(e) => setConfirmPinDraft(e.target.value.replace(/\D/g, ''))}
+                            placeholder="Confirm PIN"
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs text-[#0A1628] bg-white"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (newPinDraft.length >= 4 && newPinDraft === confirmPinDraft) {
+                                setMasterPin(newPinDraft);
+                                setNewPinDraft('');
+                                setConfirmPinDraft('');
+                                setPinEditorOpen(false);
+                              }
+                            }}
+                            className="px-3 py-1.5 rounded-lg text-white text-xs"
+                            style={{ backgroundColor: activeTheme.accent }}
+                          >
+                            Save PIN
+                          </button>
+                        </div>
+                      )}
                       {patternEditorOpen && (
                         <div className="pt-1 space-y-2">
                           <div className="grid grid-cols-3 gap-1.5 max-w-[140px]">
@@ -2419,6 +2666,21 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                           </div>
                         </div>
                       )}
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="text-xs">Fingerprint BiometricPrompt</span>
+                        <button
+                          type="button"
+                          onClick={() => setBiometricEnabled(!biometricEnabled)}
+                          className="px-2.5 py-1 rounded-lg text-[11px] font-semibold"
+                          style={
+                            biometricEnabled
+                              ? { backgroundColor: activeTheme.accent, color: '#FFFFFF' }
+                              : { backgroundColor: '#CBD5E1', color: '#0A1628' }
+                          }
+                        >
+                          {biometricEnabled ? 'On' : 'Off'}
+                        </button>
+                      </div>
                     </div>
 
                     <div
@@ -2592,88 +2854,219 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
           )}
         </div>
 
-        {/* Pattern Lock Only Overlay Preview */}
+        {/* Unified App Lock Overlay Preview (Pattern + PIN + Fingerprint) */}
         {patternOverlayTarget && (
           <div
             className="absolute inset-0 z-40 p-5 flex flex-col justify-between"
             style={{ backgroundColor: activeTheme.bg, color: activeTheme.fg }}
           >
-            <div className="text-center pt-6">
+            <div className="text-center pt-5">
               <div
-                className="w-16 h-16 rounded-full mx-auto flex items-center justify-center"
+                className="w-14 h-14 rounded-full mx-auto flex items-center justify-center"
                 style={{ backgroundColor: activeTheme.surface }}
               >
-                <Lock className="w-8 h-8" style={{ color: activeTheme.secondary }} />
+                <Lock className="w-7 h-7" style={{ color: activeTheme.secondary }} />
               </div>
-              <h3 className="mt-3 text-lg font-bold">{patternOverlayTarget}</h3>
+              <h3 className="mt-2.5 text-lg font-bold">{patternOverlayTarget}</h3>
               <p className={`mt-1 text-xs ${authError ? 'text-rose-400' : 'opacity-75'}`}>
                 {authError
-                  ? 'Incorrect pattern. Try again.'
-                  : `Draw Lock Pattern (saved: ${savedPattern.map((x) => x + 1).join(' → ')})`}
+                  ? activeOverlayMode === 'PIN'
+                    ? 'Incorrect PIN. Try again.'
+                    : 'Incorrect pattern. Try again.'
+                  : activeOverlayMode === 'PIN'
+                    ? `Enter PIN (${masterPin}) or use Fingerprint`
+                    : `Draw Pattern (${savedPattern.map((x) => x + 1).join(' → ')}) or use Fingerprint`}
               </p>
-            </div>
 
-            <div className="my-4 text-center">
-              <div
-                className="grid grid-cols-3 gap-4 max-w-[180px] mx-auto p-4 rounded-2xl"
-                style={{ backgroundColor: activeTheme.surface }}
-              >
-                {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((node) => {
-                  const activeIdx = enteredPattern.indexOf(node);
-                  return (
-                    <button
-                      key={node}
-                      type="button"
-                      onClick={() => handlePatternTap(node)}
-                      className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold transition-colors"
-                      style={
-                        activeIdx >= 0
-                          ? { backgroundColor: activeTheme.secondary, color: '#0A1628' }
-                          : { backgroundColor: 'rgba(255,255,255,0.14)', color: activeTheme.fg }
-                      }
-                    >
-                      {activeIdx >= 0 ? activeIdx + 1 : node + 1}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="flex justify-center gap-2 mt-4">
-                <button
-                  type="button"
-                  onClick={() => setEnteredPattern([])}
-                  className="px-3 py-1.5 rounded-lg bg-white/10 text-xs"
-                >
-                  Clear
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const matches =
-                      enteredPattern.length >= 4 &&
-                      enteredPattern.length === savedPattern.length &&
-                      enteredPattern.every((v, i) => v === savedPattern[i]);
-                    if (matches) {
+              <div className="flex justify-center gap-1.5 mt-3">
+                {(['PATTERN', 'PIN'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => {
+                      setActiveOverlayMode(m);
+                      setAuthError(false);
                       setEnteredPattern([]);
+                      setEnteredPin('');
+                    }}
+                    className="px-3 py-1 rounded-lg text-[11px] font-semibold"
+                    style={
+                      activeOverlayMode === m
+                        ? { backgroundColor: activeTheme.accent, color: '#FFFFFF' }
+                        : { backgroundColor: activeTheme.surface, color: activeTheme.fg }
+                    }
+                  >
+                    {m === 'PATTERN' ? 'Pattern' : 'PIN'}
+                  </button>
+                ))}
+                {biometricEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEnteredPattern([]);
+                      setEnteredPin('');
                       setAuthError(false);
                       setPatternOverlayTarget(null);
                       setLaunchedTargetApp(null);
-                    } else {
-                      setEnteredPattern([]);
-                      setAuthError(true);
-                    }
-                  }}
-                  className="px-4 py-1.5 rounded-lg text-white text-xs font-semibold"
-                  style={{ backgroundColor: activeTheme.accent }}
-                >
-                  Verify Pattern
-                </button>
+                    }}
+                    className="px-3 py-1 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1"
+                    style={{ backgroundColor: `${activeTheme.secondary}26`, color: activeTheme.secondary }}
+                  >
+                    <Fingerprint className="w-3.5 h-3.5" />
+                    <span>Fingerprint</span>
+                  </button>
+                )}
               </div>
             </div>
+
+            {activeOverlayMode === 'PATTERN' ? (
+              <div className="my-3 text-center">
+                <div
+                  className="grid grid-cols-3 gap-4 max-w-[180px] mx-auto p-4 rounded-2xl"
+                  style={{ backgroundColor: activeTheme.surface }}
+                >
+                  {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((node) => {
+                    const activeIdx = enteredPattern.indexOf(node);
+                    return (
+                      <button
+                        key={node}
+                        type="button"
+                        onClick={() => handlePatternTap(node)}
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold transition-colors"
+                        style={
+                          activeIdx >= 0
+                            ? { backgroundColor: activeTheme.secondary, color: '#0A1628' }
+                            : { backgroundColor: 'rgba(255,255,255,0.14)', color: activeTheme.fg }
+                        }
+                      >
+                        {activeIdx >= 0 ? activeIdx + 1 : node + 1}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex justify-center gap-2 mt-4">
+                  <button
+                    type="button"
+                    onClick={() => setEnteredPattern([])}
+                    className="px-3 py-1.5 rounded-lg bg-white/10 text-xs"
+                  >
+                    Clear
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const matches =
+                        enteredPattern.length >= 4 &&
+                        enteredPattern.length === savedPattern.length &&
+                        enteredPattern.every((v, i) => v === savedPattern[i]);
+                      if (matches) {
+                        setEnteredPattern([]);
+                        setAuthError(false);
+                        setPatternOverlayTarget(null);
+                        setLaunchedTargetApp(null);
+                      } else {
+                        setEnteredPattern([]);
+                        setAuthError(true);
+                      }
+                    }}
+                    className="px-4 py-1.5 rounded-lg text-white text-xs font-semibold"
+                    style={{ backgroundColor: activeTheme.accent }}
+                  >
+                    Verify Pattern
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="my-3 text-center space-y-4">
+                <div className="flex justify-center gap-2.5">
+                  {Array.from({ length: Math.max(masterPin.length, 4) }).map((_, i) => (
+                    <span
+                      key={i}
+                      className="w-3 h-3 rounded-full"
+                      style={{
+                        backgroundColor:
+                          i < enteredPin.length ? activeTheme.secondary : 'rgba(255,255,255,0.22)',
+                      }}
+                    />
+                  ))}
+                </div>
+                <div className="grid grid-cols-3 gap-2.5 max-w-[210px] mx-auto">
+                  {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => {
+                        const next = enteredPin + d;
+                        setEnteredPin(next);
+                        setAuthError(false);
+                        if (next === masterPin) {
+                          setEnteredPin('');
+                          setPatternOverlayTarget(null);
+                          setLaunchedTargetApp(null);
+                        } else if (next.length >= Math.max(masterPin.length, 4)) {
+                          setEnteredPin('');
+                          setAuthError(true);
+                        }
+                      }}
+                      className="h-11 rounded-full bg-white/10 hover:bg-white/20 text-sm font-semibold"
+                    >
+                      {d}
+                    </button>
+                  ))}
+                  {biometricEnabled ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEnteredPin('');
+                        setAuthError(false);
+                        setPatternOverlayTarget(null);
+                        setLaunchedTargetApp(null);
+                      }}
+                      className="h-11 rounded-full flex items-center justify-center"
+                      style={{ backgroundColor: `${activeTheme.accent}44`, color: activeTheme.secondary }}
+                      aria-label="Fingerprint unlock"
+                    >
+                      <Fingerprint className="w-5 h-5" />
+                    </button>
+                  ) : (
+                    <div />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = enteredPin + '0';
+                      setEnteredPin(next);
+                      setAuthError(false);
+                      if (next === masterPin) {
+                        setEnteredPin('');
+                        setPatternOverlayTarget(null);
+                        setLaunchedTargetApp(null);
+                      } else if (next.length >= Math.max(masterPin.length, 4)) {
+                        setEnteredPin('');
+                        setAuthError(true);
+                      }
+                    }}
+                    className="h-11 rounded-full bg-white/10 hover:bg-white/20 text-sm font-semibold"
+                  >
+                    0
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEnteredPin(enteredPin.slice(0, -1))}
+                    className="h-11 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center"
+                    aria-label="Backspace"
+                  >
+                    <Delete className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
 
             <button
               type="button"
               onClick={() => {
                 setEnteredPattern([]);
+                setEnteredPin('');
                 setAuthError(false);
                 setPatternOverlayTarget(null);
                 setLaunchedTargetApp(null);

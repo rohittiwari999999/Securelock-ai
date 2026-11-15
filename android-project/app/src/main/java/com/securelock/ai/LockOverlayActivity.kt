@@ -19,6 +19,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,9 +31,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -40,6 +43,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -58,19 +62,28 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.securelock.ai.data.LockMethod
+import com.securelock.ai.security.BiometricAuthManager
+import com.securelock.ai.security.BiometricAvailability
 import com.securelock.ai.security.PermissionHelper
 import com.securelock.ai.security.SecureStorageRepository
 import com.securelock.ai.service.AppLockServiceController
 import com.securelock.ai.service.AppLockSessionManager
 import com.securelock.ai.ui.components.PatternLockPad
+import com.securelock.ai.ui.components.PinKeypad
 import com.securelock.ai.ui.theme.CrimsonAlert
 import com.securelock.ai.ui.theme.SecureLockTheme
 import java.io.File
 import java.util.UUID
 
+private enum class ActiveOverlayMode {
+    PATTERN,
+    PIN
+}
+
 /**
- * Dedicated FLAG_SECURE Pattern Lock Activity shown when a protected app opens.
- * Uses Lock Pattern ONLY (no Unlock Gate, no Decoy Gate, no competing PIN/Biometric overlays).
+ * Single FLAG_SECURE Lock Overlay Activity shown when a protected app opens.
+ * Supports Fingerprint (BiometricPrompt), PIN, and Pattern together cleanly
+ * without conflicting decoy gates or duplicate overlays.
  */
 class LockOverlayActivity : FragmentActivity() {
 
@@ -106,8 +119,10 @@ class LockOverlayActivity : FragmentActivity() {
                 forceLightMode = settings.forceLightMode,
                 cardStyleMode = settings.cardStyleMode
             ) {
-                AppPatternLockOverlay(
+                UnifiedAppLockOverlay(
+                    activity = this,
                     repository = repository,
+                    targetPackage = targetPackage,
                     targetLabel = targetLabel,
                     onUnlocked = {
                         AppLockSessionManager.markAppUnlocked(
@@ -160,37 +175,115 @@ class LockOverlayActivity : FragmentActivity() {
 }
 
 @Composable
-private fun AppPatternLockOverlay(
+private fun UnifiedAppLockOverlay(
+    activity: FragmentActivity,
     repository: SecureStorageRepository,
+    targetPackage: String,
     targetLabel: String,
     onUnlocked: () -> Unit,
     onCancelHome: () -> Unit
 ) {
     val settings by repository.settings.collectAsState()
-    var hasPattern by remember { mutableStateOf(repository.hasPatternConfigured()) }
-    var firstSetupPattern by remember { mutableStateOf<List<Int>?>(null) }
-    var isError by remember { mutableStateOf(false) }
-    var consecutiveFailures by remember { mutableIntStateOf(0) }
-    var statusMessage by remember(hasPattern, targetLabel) {
+    val hasPattern = remember { repository.hasPatternConfigured() }
+    val hasPin = remember { repository.hasPinConfigured() }
+    val hasAnyCredential = hasPattern || hasPin
+
+    val bioAvailability = remember { BiometricAuthManager.checkAvailability(activity) }
+    val fingerprintReady = settings.biometricEnabled && bioAvailability is BiometricAvailability.Available
+
+    val initialMode = remember(targetPackage, settings.preferredLockMethod, hasPattern, hasPin) {
+        val preferred = repository.resolveMethodForPackage(targetPackage)
+        when {
+            preferred == LockMethod.PATTERN && hasPattern -> ActiveOverlayMode.PATTERN
+            (preferred == LockMethod.PIN_4 || preferred == LockMethod.PIN_6 || preferred == LockMethod.PIN_CUSTOM) && hasPin ->
+                ActiveOverlayMode.PIN
+            hasPattern -> ActiveOverlayMode.PATTERN
+            hasPin -> ActiveOverlayMode.PIN
+            else -> ActiveOverlayMode.PATTERN
+        }
+    }
+
+    var activeMode by remember(targetPackage) { mutableStateOf(initialMode) }
+    var enteredPin by remember(targetPackage) { mutableStateOf("") }
+    var firstSetupPattern by remember(targetPackage) { mutableStateOf<List<Int>?>(null) }
+    var patternConfiguredNow by remember { mutableStateOf(hasPattern) }
+    var isError by remember(targetPackage) { mutableStateOf(false) }
+    var consecutiveFailures by remember(targetPackage) { mutableIntStateOf(0) }
+    var statusMessage by remember(targetPackage, activeMode, hasAnyCredential) {
         mutableStateOf(
-            if (hasPattern) "Draw your lock pattern to open $targetLabel"
-            else "Create a lock pattern (4+ dots) to protect $targetLabel"
+            when {
+                !hasAnyCredential -> "Draw a Lock Pattern (4+ dots) to protect $targetLabel"
+                activeMode == ActiveOverlayMode.PATTERN -> "Draw pattern or use fingerprint to open $targetLabel"
+                else -> "Enter PIN or use fingerprint to open $targetLabel"
+            }
         )
     }
     var showForegroundCapturePrompt by remember { mutableStateOf(false) }
     var lastIntruderId by remember { mutableStateOf<String?>(null) }
+
+    fun handleFailedAttempt(methodName: String, customText: String) {
+        consecutiveFailures += 1
+        repository.recordAuthAttempt(false, methodName, targetLabel)
+        isError = true
+        statusMessage = "$customText ($consecutiveFailures failed attempt(s))"
+        val threshold = settings.intruderAttemptThreshold.coerceIn(1, 10)
+        if (consecutiveFailures >= threshold) {
+            val rec = repository.addIntruderRecord(
+                failedAttemptCount = consecutiveFailures,
+                targetPackage = targetLabel,
+                methodAttempted = methodName,
+                imagePath = null
+            )
+            lastIntruderId = rec.id
+            if (settings.foregroundIntruderPromptEnabled) {
+                showForegroundCapturePrompt = true
+            }
+        }
+    }
+
+    fun triggerFingerprint() {
+        if (!fingerprintReady) return
+        BiometricAuthManager.authenticate(
+            activity = activity,
+            title = "Unlock $targetLabel",
+            subtitle = "Confirm fingerprint to continue",
+            negativeButtonText = "Use Pattern / PIN",
+            onSuccess = {
+                isError = false
+                consecutiveFailures = 0
+                repository.recordAuthAttempt(true, "Fingerprint", targetLabel)
+                onUnlocked()
+            },
+            onFailedAttempt = {
+                handleFailedAttempt("Fingerprint", "Fingerprint not recognized")
+            },
+            onError = { err ->
+                isError = true
+                statusMessage = err
+            }
+        )
+    }
+
+    // Launch BiometricPrompt cleanly once when Fingerprint is enabled (Pattern/PIN remain ready underneath)
+    LaunchedEffect(targetPackage, fingerprintReady, hasAnyCredential) {
+        if (fingerprintReady && hasAnyCredential) {
+            triggerFingerprint()
+        }
+    }
 
     val bg = MaterialTheme.colorScheme.background
     val fg = MaterialTheme.colorScheme.onBackground
     val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
     val accent = MaterialTheme.colorScheme.secondary
 
+    val configuredPinLen = remember { repository.configuredPinLength().coerceIn(4, 12) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(bg)
             .safeDrawingPadding()
-            .padding(horizontal = 24.dp, vertical = 28.dp),
+            .padding(horizontal = 24.dp, vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
@@ -198,19 +291,19 @@ private fun AppPatternLockOverlay(
             Surface(
                 shape = CircleShape,
                 color = surfaceVariant,
-                modifier = Modifier.size(88.dp)
+                modifier = Modifier.size(76.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.Default.Lock,
                         contentDescription = null,
                         tint = accent,
-                        modifier = Modifier.size(44.dp)
+                        modifier = Modifier.size(38.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             Text(
                 text = targetLabel,
@@ -228,70 +321,143 @@ private fun AppPatternLockOverlay(
                 color = if (isError) CrimsonAlert else fg.copy(alpha = 0.78f),
                 textAlign = TextAlign.Center
             )
-        }
 
-        PatternLockPad(
-            onPatternComplete = { nodes ->
-                if (!hasPattern) {
-                    if (nodes.size < 4) {
-                        isError = true
-                        statusMessage = "Connect at least 4 dots"
-                    } else if (firstSetupPattern == null) {
-                        firstSetupPattern = nodes
-                        isError = false
-                        statusMessage = "Draw the same pattern again to confirm"
-                    } else if (firstSetupPattern == nodes) {
-                        repository.setPattern(nodes)
-                        repository.updateSettings {
-                            it.copy(
-                                preferredLockMethod = LockMethod.PATTERN,
-                                biometricEnabled = false
-                            )
-                        }
-                        if (!repository.hasRecoveryCodeConfigured()) {
-                            repository.generateAndStoreRecoveryCode()
-                        }
-                        hasPattern = true
-                        firstSetupPattern = null
-                        isError = false
-                        repository.recordAuthAttempt(true, "Pattern", targetLabel)
-                        onUnlocked()
-                    } else {
-                        firstSetupPattern = null
-                        isError = true
-                        statusMessage = "Patterns did not match. Draw again."
+            if (hasAnyCredential && (hasPattern || hasPin || fingerprintReady)) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (hasPattern || patternConfiguredNow) {
+                        FilterChip(
+                            selected = activeMode == ActiveOverlayMode.PATTERN,
+                            onClick = {
+                                activeMode = ActiveOverlayMode.PATTERN
+                                isError = false
+                                statusMessage = "Draw pattern to open $targetLabel"
+                            },
+                            label = { Text("Pattern") }
+                        )
                     }
-                } else {
-                    if (nodes.size < 4) {
-                        isError = true
-                        statusMessage = "Connect at least 4 dots"
-                    } else if (repository.verifyPattern(nodes)) {
-                        isError = false
-                        consecutiveFailures = 0
-                        repository.recordAuthAttempt(true, "Pattern", targetLabel)
-                        onUnlocked()
-                    } else {
-                        consecutiveFailures += 1
-                        repository.recordAuthAttempt(false, "Pattern", targetLabel)
-                        isError = true
-                        statusMessage = "Incorrect pattern ($consecutiveFailures failed attempt(s))"
-                        val threshold = settings.intruderAttemptThreshold.coerceIn(1, 10)
-                        if (consecutiveFailures >= threshold) {
-                            val rec = repository.addIntruderRecord(
-                                failedAttemptCount = consecutiveFailures,
-                                targetPackage = targetLabel,
-                                methodAttempted = "Pattern",
-                                imagePath = null
-                            )
-                            lastIntruderId = rec.id
-                            if (settings.foregroundIntruderPromptEnabled) {
-                                showForegroundCapturePrompt = true
-                            }
-                        }
+                    if (hasPin) {
+                        FilterChip(
+                            selected = activeMode == ActiveOverlayMode.PIN,
+                            onClick = {
+                                activeMode = ActiveOverlayMode.PIN
+                                enteredPin = ""
+                                isError = false
+                                statusMessage = "Enter PIN to open $targetLabel"
+                            },
+                            label = { Text("PIN") }
+                        )
+                    }
+                    if (fingerprintReady) {
+                        FilterChip(
+                            selected = false,
+                            onClick = { triggerFingerprint() },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Fingerprint,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
+                            label = { Text("Fingerprint") }
+                        )
                     }
                 }
             }
-        )
+        }
+
+        if (activeMode == ActiveOverlayMode.PIN && hasPin) {
+            PinKeypad(
+                enteredLength = enteredPin.length,
+                maxLength = configuredPinLen,
+                onDigit = { digit ->
+                    if (enteredPin.length < 12) {
+                        val next = enteredPin + digit
+                        enteredPin = next
+                        isError = false
+                        if (repository.verifyPin(next)) {
+                            enteredPin = ""
+                            consecutiveFailures = 0
+                            repository.recordAuthAttempt(true, "PIN", targetLabel)
+                            onUnlocked()
+                        } else if (next.length >= configuredPinLen) {
+                            enteredPin = ""
+                            handleFailedAttempt("PIN", "Incorrect PIN")
+                        }
+                    }
+                },
+                onBackspace = {
+                    if (enteredPin.isNotEmpty()) {
+                        enteredPin = enteredPin.dropLast(1)
+                    }
+                },
+                onBiometricClick = if (fingerprintReady) {
+                    { triggerFingerprint() }
+                } else null,
+                biometricIcon = if (fingerprintReady) Icons.Default.Fingerprint else null
+            )
+        } else {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                PatternLockPad(
+                    onPatternComplete = { nodes ->
+                        if (!hasAnyCredential && !patternConfiguredNow) {
+                            if (nodes.size < 4) {
+                                isError = true
+                                statusMessage = "Connect at least 4 dots"
+                            } else if (firstSetupPattern == null) {
+                                firstSetupPattern = nodes
+                                isError = false
+                                statusMessage = "Draw the same pattern again to confirm"
+                            } else if (firstSetupPattern == nodes) {
+                                repository.setPattern(nodes)
+                                repository.updateSettings {
+                                    it.copy(
+                                        preferredLockMethod = LockMethod.PATTERN,
+                                        protectionScreenConfig = it.protectionScreenConfig.copy(enabled = false)
+                                    )
+                                }
+                                if (!repository.hasRecoveryCodeConfigured()) {
+                                    repository.generateAndStoreRecoveryCode()
+                                }
+                                patternConfiguredNow = true
+                                firstSetupPattern = null
+                                isError = false
+                                repository.recordAuthAttempt(true, "Pattern", targetLabel)
+                                onUnlocked()
+                            } else {
+                                firstSetupPattern = null
+                                isError = true
+                                statusMessage = "Patterns did not match. Draw again."
+                            }
+                        } else {
+                            if (nodes.size < 4) {
+                                isError = true
+                                statusMessage = "Connect at least 4 dots"
+                            } else if (repository.verifyPattern(nodes)) {
+                                isError = false
+                                consecutiveFailures = 0
+                                repository.recordAuthAttempt(true, "Pattern", targetLabel)
+                                onUnlocked()
+                            } else {
+                                handleFailedAttempt("Pattern", "Incorrect pattern")
+                            }
+                        }
+                    }
+                )
+                if (fingerprintReady) {
+                    OutlinedButton(onClick = { triggerFingerprint() }) {
+                        Icon(Icons.Default.Fingerprint, contentDescription = null)
+                        Text("  Unlock with Fingerprint")
+                    }
+                }
+            }
+        }
 
         TextButton(onClick = onCancelHome) {
             Text(
@@ -333,7 +499,7 @@ private fun OverlayIntruderCaptureDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    "Multiple wrong pattern attempts reached your threshold. Capture an encrypted verification photo now or skip."
+                    "Multiple wrong attempts reached your threshold. Capture an encrypted verification photo now or skip."
                 )
                 if (cameraGranted) {
                     AndroidView(
