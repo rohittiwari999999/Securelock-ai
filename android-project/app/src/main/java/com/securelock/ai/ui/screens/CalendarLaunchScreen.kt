@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -63,7 +62,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -76,7 +74,6 @@ import com.securelock.ai.data.LockMethod
 import com.securelock.ai.security.BiometricAuthManager
 import com.securelock.ai.security.BiometricAvailability
 import com.securelock.ai.security.SecretDateUnlockEvaluator
-import com.securelock.ai.security.SecretPinVerifyResult
 import com.securelock.ai.security.SecretTapOutcome
 import com.securelock.ai.security.SecretTapState
 import com.securelock.ai.security.SecureStorageRepository
@@ -148,9 +145,6 @@ fun CalendarLaunchScreen(
     var selectedDay by remember { mutableIntStateOf(todayDay) }
 
     var tapState by remember { mutableStateOf(SecretTapState()) }
-    var showPinDialog by remember { mutableStateOf(false) }
-    var pinInput by remember { mutableStateOf("") }
-    var passwordInput by remember { mutableStateOf("") }
 
     // First-time onboarding state (disappears forever once AppLock & Secret Date are configured)
     var appLockConfigured by remember { mutableStateOf(repository.hasAppLockCredentialConfigured()) }
@@ -164,14 +158,11 @@ fun CalendarLaunchScreen(
         }
     }
 
-    // Reset tap counter & clear unlocked prompt whenever app goes to background
+    // Reset tap counter whenever app goes to background
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
                 tapState = SecretDateUnlockEvaluator.reset()
-                pinInput = ""
-                passwordInput = ""
-                showPinDialog = false
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -198,36 +189,6 @@ fun CalendarLaunchScreen(
         displayedMonth = now.get(Calendar.MONTH) + 1
         selectedDay = now.get(Calendar.DAY_OF_MONTH)
         tapState = SecretDateUnlockEvaluator.reset()
-    }
-
-    fun submitSecretPin() {
-        val candidate = pinInput
-        pinInput = ""
-        showPinDialog = false
-        tapState = SecretDateUnlockEvaluator.reset()
-        if (candidate.length !in 4..12) return
-
-        if (repository.hasSecretDatePinConfigured()) {
-            when (repository.verifySecretDatePin(candidate)) {
-                SecretPinVerifyResult.Success -> onSecretUnlocked()
-                is SecretPinVerifyResult.Incorrect,
-                is SecretPinVerifyResult.RateLimited -> {
-                    // Dismissed cleanly; remain on Calendar without revealing secret state
-                }
-            }
-        } else if (repository.verifyPin(candidate)) {
-            onSecretUnlocked()
-        }
-    }
-
-    fun submitSecretPassword() {
-        val candidate = passwordInput
-        passwordInput = ""
-        showPinDialog = false
-        tapState = SecretDateUnlockEvaluator.reset()
-        if (candidate.isNotEmpty() && repository.verifyPassword(candidate)) {
-            onSecretUnlocked()
-        }
     }
 
     val monthCells = remember(displayedYear, displayedMonth) {
@@ -494,9 +455,7 @@ fun CalendarLaunchScreen(
                                                             }
                                                             is SecretTapOutcome.TriggerPinPrompt -> {
                                                                 tapState = outcome.resetState
-                                                                pinInput = ""
-                                                                passwordInput = ""
-                                                                showPinDialog = true
+                                                                onSecretUnlocked()
                                                             }
                                                         }
                                                     }
@@ -857,118 +816,6 @@ fun CalendarLaunchScreen(
                 dismissButton = {
                     TextButton(onClick = { pendingSecretDate = null }) {
                         Text("Change Date")
-                    }
-                }
-            )
-        }
-
-        // Discreet Credential Dialog (Normal Mode after 5 taps on configured Secret Date)
-        if (showPinDialog) {
-            val usePatternPrompt = !repository.hasSecretDatePinConfigured() &&
-                settings.preferredLockMethod == LockMethod.PATTERN &&
-                repository.hasPatternConfigured()
-            val usePasswordPrompt = !repository.hasSecretDatePinConfigured() &&
-                settings.preferredLockMethod == LockMethod.PASSWORD &&
-                repository.hasPasswordConfigured()
-
-            AlertDialog(
-                onDismissRequest = {
-                    pinInput = ""
-                    passwordInput = ""
-                    showPinDialog = false
-                    tapState = SecretDateUnlockEvaluator.reset()
-                },
-                title = {
-                    Text(
-                        text = when {
-                            usePatternPrompt -> "Draw Pattern"
-                            usePasswordPrompt -> "Enter Password"
-                            else -> "Enter PIN"
-                        },
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                },
-                text = {
-                    when {
-                        usePatternPrompt -> {
-                            Box(
-                                modifier = Modifier.fillMaxWidth(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                PatternLockPad(
-                                    onPatternComplete = { nodes ->
-                                        showPinDialog = false
-                                        tapState = SecretDateUnlockEvaluator.reset()
-                                        if (nodes.size >= 4 && repository.verifyPattern(nodes)) {
-                                            onSecretUnlocked()
-                                        }
-                                    }
-                                )
-                            }
-                        }
-
-                        usePasswordPrompt -> {
-                            OutlinedTextField(
-                                value = passwordInput,
-                                onValueChange = { passwordInput = it },
-                                singleLine = true,
-                                visualTransformation = PasswordVisualTransformation(),
-                                keyboardOptions = KeyboardOptions(
-                                    keyboardType = KeyboardType.Password,
-                                    imeAction = ImeAction.Done
-                                ),
-                                keyboardActions = KeyboardActions(
-                                    onDone = { submitSecretPassword() }
-                                ),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-
-                        else -> {
-                            OutlinedTextField(
-                                value = pinInput,
-                                onValueChange = { updated ->
-                                    if (updated.length <= 12 && updated.all(Char::isDigit)) {
-                                        pinInput = updated
-                                    }
-                                },
-                                singleLine = true,
-                                visualTransformation = PasswordVisualTransformation(),
-                                keyboardOptions = KeyboardOptions(
-                                    keyboardType = KeyboardType.NumberPassword,
-                                    imeAction = ImeAction.Done
-                                ),
-                                keyboardActions = KeyboardActions(
-                                    onDone = { submitSecretPin() }
-                                ),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    }
-                },
-                confirmButton = {
-                    if (!usePatternPrompt) {
-                        Button(
-                            onClick = {
-                                if (usePasswordPrompt) submitSecretPassword() else submitSecretPin()
-                            },
-                            enabled = if (usePasswordPrompt) passwordInput.isNotEmpty() else pinInput.length in 4..12
-                        ) {
-                            Text("Confirm")
-                        }
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            pinInput = ""
-                            passwordInput = ""
-                            showPinDialog = false
-                            tapState = SecretDateUnlockEvaluator.reset()
-                        }
-                    ) {
-                        Text("Cancel")
                     }
                 }
             )

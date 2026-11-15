@@ -479,7 +479,7 @@ class SecureStorageRepository(context: Context) {
     fun importLocalBackupJson(rawJson: String): Boolean {
         return runCatching {
             val payload = json.decodeFromString<LocalBackupPayload>(rawJson)
-            val pinReady = hasSecretDatePinConfigured()
+            val pinReady = hasSecretDatePinConfigured() || hasAppLockCredentialConfigured()
             updateSettings { current ->
                 payload.settings.copy(
                     isSetupComplete = current.isSetupComplete,

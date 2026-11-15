@@ -334,10 +334,6 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
     count: 0,
     lastTapAt: 0,
   });
-  const [calPinDialogOpen, setCalPinDialogOpen] = useState(false);
-  const [calPinInput, setCalPinInput] = useState('');
-  const [calPatternDraft, setCalPatternDraft] = useState<number[]>([]);
-  const [calPasswordInput, setCalPasswordInput] = useState('');
 
   useEffect(() => {
     if (calTapState.count === 0) return;
@@ -350,10 +346,6 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
   useEffect(() => {
     if (activeScreen !== 'calendar') {
       setCalTapState({ day: 0, month: 0, year: 0, count: 0, lastTapAt: 0 });
-      setCalPinDialogOpen(false);
-      setCalPinInput('');
-      setCalPatternDraft([]);
-      setCalPasswordInput('');
     }
   }, [activeScreen]);
 
@@ -915,10 +907,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
 
     if (nextCount >= 5 && matchesConfigured) {
       setCalTapState({ day: 0, month: 0, year: 0, count: 0, lastTapAt: 0 });
-      setCalPinInput('');
-      setCalPatternDraft([]);
-      setCalPasswordInput('');
-      setCalPinDialogOpen(true);
+      onScreenChange('dashboard');
       return;
     }
 
@@ -929,40 +918,6 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
       count: nextCount,
       lastTapAt: now,
     });
-  };
-
-  const submitCalSecretPin = () => {
-    const candidate = calPinInput;
-    setCalPinInput('');
-    setCalPinDialogOpen(false);
-    setCalTapState({ day: 0, month: 0, year: 0, count: 0, lastTapAt: 0 });
-    if (candidate === secretPin) {
-      onScreenChange('dashboard');
-    }
-  };
-
-  const submitCalSecretPassword = () => {
-    const candidate = calPasswordInput;
-    setCalPasswordInput('');
-    setCalPinDialogOpen(false);
-    setCalTapState({ day: 0, month: 0, year: 0, count: 0, lastTapAt: 0 });
-    if (candidate === masterPassword) {
-      onScreenChange('dashboard');
-    }
-  };
-
-  const submitCalSecretPattern = () => {
-    const candidate = calPatternDraft;
-    setCalPatternDraft([]);
-    setCalPinDialogOpen(false);
-    setCalTapState({ day: 0, month: 0, year: 0, count: 0, lastTapAt: 0 });
-    if (
-      candidate.length >= 4 &&
-      candidate.length === savedPattern.length &&
-      candidate.every((v, i) => v === savedPattern[i])
-    ) {
-      onScreenChange('dashboard');
-    }
   };
 
   return (
@@ -1402,104 +1357,6 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                         className="flex-1 py-2 rounded-xl text-xs font-semibold bg-[#1A73E8] text-white"
                       >
                         Save &amp; Finish
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Discreet Credential Dialog on 5th tap */}
-              {calPinDialogOpen && (
-                <div className="absolute inset-0 bg-black/45 flex items-center justify-center p-5 z-20">
-                  <div className="bg-white rounded-3xl p-5 w-full max-w-[290px] shadow-2xl space-y-3 text-[#1F1F1F]">
-                    <div className="text-base font-semibold">
-                      {!simHasPinSecret && defaultLockMethod === 'PATTERN'
-                        ? 'Draw Pattern'
-                        : !simHasPinSecret && defaultLockMethod === 'PASSWORD'
-                          ? 'Enter Password'
-                          : 'Enter PIN'}
-                    </div>
-                    {!simHasPinSecret && defaultLockMethod === 'PATTERN' ? (
-                      <div className="grid grid-cols-3 gap-2 max-w-[165px] mx-auto bg-slate-100 p-3 rounded-2xl">
-                        {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => {
-                          const idx = calPatternDraft.indexOf(n);
-                          return (
-                            <button
-                              key={n}
-                              type="button"
-                              onClick={() =>
-                                !calPatternDraft.includes(n) &&
-                                setCalPatternDraft([...calPatternDraft, n])
-                              }
-                              className={`h-9 rounded-full text-xs font-bold ${
-                                idx >= 0
-                                  ? 'bg-[#1A73E8] text-white'
-                                  : 'bg-white text-slate-700 border border-slate-300'
-                              }`}
-                            >
-                              {idx >= 0 ? idx + 1 : n + 1}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : !simHasPinSecret && defaultLockMethod === 'PASSWORD' ? (
-                      <input
-                        type="password"
-                        autoFocus
-                        value={calPasswordInput}
-                        onChange={(e) => setCalPasswordInput(e.target.value)}
-                        onKeyDown={(e) =>
-                          e.key === 'Enter' && calPasswordInput.length > 0 && submitCalSecretPassword()
-                        }
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm text-[#1F1F1F] bg-white focus:outline-none focus:border-[#1A73E8]"
-                      />
-                    ) : (
-                      <input
-                        type="password"
-                        maxLength={12}
-                        autoFocus
-                        value={calPinInput}
-                        onChange={(e) => setCalPinInput(e.target.value.replace(/\D/g, ''))}
-                        onKeyDown={(e) =>
-                          e.key === 'Enter' && calPinInput.length >= 4 && submitCalSecretPin()
-                        }
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm text-[#1F1F1F] bg-white focus:outline-none focus:border-[#1A73E8]"
-                      />
-                    )}
-                    <div className="flex justify-end gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCalPinInput('');
-                          setCalPatternDraft([]);
-                          setCalPasswordInput('');
-                          setCalPinDialogOpen(false);
-                        }}
-                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-[#5F6368] hover:bg-slate-100"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        disabled={
-                          !simHasPinSecret && defaultLockMethod === 'PATTERN'
-                            ? calPatternDraft.length < 4
-                            : !simHasPinSecret && defaultLockMethod === 'PASSWORD'
-                              ? calPasswordInput.length === 0
-                              : calPinInput.length < 4
-                        }
-                        onClick={() => {
-                          if (!simHasPinSecret && defaultLockMethod === 'PATTERN') {
-                            submitCalSecretPattern();
-                          } else if (!simHasPinSecret && defaultLockMethod === 'PASSWORD') {
-                            submitCalSecretPassword();
-                          } else {
-                            submitCalSecretPin();
-                          }
-                        }}
-                        className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-[#1A73E8] text-white disabled:opacity-40"
-                      >
-                        Confirm
                       </button>
                     </div>
                   </div>

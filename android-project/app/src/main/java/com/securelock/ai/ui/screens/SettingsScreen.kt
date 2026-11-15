@@ -267,9 +267,9 @@ fun SettingsScreen(
                                 )
                                 Text(
                                     text = if (settings.secretDateConfig.enabled && hasSecretPin) {
-                                        "Active: Launches as a standalone Calendar; tap your secret date 5 times to verify Secret PIN."
+                                        "Active: Launches as a standalone Calendar; tap your secret date 5 times to open SecureLock AI."
                                     } else {
-                                        "Launch as a realistic Calendar app and unlock the dashboard by tapping a secret date 5 times."
+                                        "Launch as a realistic Calendar app and open SecureLock AI by tapping a secret date 5 times."
                                     },
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
