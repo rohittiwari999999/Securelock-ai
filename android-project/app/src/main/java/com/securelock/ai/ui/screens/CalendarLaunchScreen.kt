@@ -19,12 +19,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.outlined.EventNote
 import androidx.compose.material3.AlertDialog
@@ -32,15 +30,11 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -60,10 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
@@ -71,8 +62,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.securelock.ai.data.LockMethod
-import com.securelock.ai.security.BiometricAuthManager
-import com.securelock.ai.security.BiometricAvailability
 import com.securelock.ai.security.SecretDateUnlockEvaluator
 import com.securelock.ai.security.SecretTapOutcome
 import com.securelock.ai.security.SecretTapState
@@ -126,11 +115,10 @@ private data class CalendarCell(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CalendarLaunchScreen(
-    activity: FragmentActivity? = null,
+    @Suppress("UNUSED_PARAMETER") activity: FragmentActivity? = null,
     repository: SecureStorageRepository,
     onSecretUnlocked: () -> Unit
 ) {
-    val context = LocalContext.current
     val settings by repository.settings.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
     val isDark = isSystemInDarkTheme()
@@ -540,180 +528,62 @@ fun CalendarLaunchScreen(
             }
         }
 
-        // Step 2: Direct AppLock Setup Window (opens immediately after 5 taps on chosen date; no Calendar Lock popup)
+        // Step 2: Direct Pattern Lock Setup Window (opens immediately after 5 taps on chosen date)
         pendingSecretDate?.let { (chosenDay, chosenMonth, _) ->
-            val bioAvailability = remember(context) { BiometricAuthManager.checkAvailability(context) }
-            val bioAvailable = bioAvailability is BiometricAvailability.Available
-
-            var selectedMethod by remember { mutableStateOf(LockMethod.PIN_4) }
-            var pinDraft by remember { mutableStateOf("") }
-            var pinConfirmDraft by remember { mutableStateOf("") }
-            var passDraft by remember { mutableStateOf("") }
-            var passConfirmDraft by remember { mutableStateOf("") }
             var firstPattern by remember { mutableStateOf<List<Int>?>(null) }
             var confirmedPattern by remember { mutableStateOf<List<Int>?>(null) }
-            var patternHint by remember { mutableStateOf("Draw a pattern (4+ dots)") }
-            var biometricEnabledDraft by remember { mutableStateOf(bioAvailable) }
-            var bioVerifiedNote by remember { mutableStateOf<String?>(null) }
+            var patternHint by remember { mutableStateOf("Draw your Lock Pattern (4+ dots)") }
             var appLockErr by remember { mutableStateOf<String?>(null) }
 
             AlertDialog(
                 onDismissRequest = { pendingSecretDate = null },
-                title = { Text("Step 2: AppLock Setup") },
+                title = { Text("Step 2: Set Lock Pattern") },
                 text = {
                     Column(
                         modifier = Modifier.verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "Choose how you want to lock and unlock your apps:",
+                            text = "Draw a lock pattern to protect your locked apps (Pattern Lock only):",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.fillMaxWidth()
                         )
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            FilterChip(
-                                selected = selectedMethod != LockMethod.PATTERN && selectedMethod != LockMethod.PASSWORD,
-                                onClick = { selectedMethod = LockMethod.PIN_4; appLockErr = null },
-                                label = { Text("PIN") }
-                            )
-                            FilterChip(
-                                selected = selectedMethod == LockMethod.PATTERN,
-                                onClick = { selectedMethod = LockMethod.PATTERN; appLockErr = null },
-                                label = { Text("Pattern") }
-                            )
-                            FilterChip(
-                                selected = selectedMethod == LockMethod.PASSWORD,
-                                onClick = { selectedMethod = LockMethod.PASSWORD; appLockErr = null },
-                                label = { Text("Password") }
-                            )
-                        }
-
-                        when (selectedMethod) {
-                            LockMethod.PATTERN -> {
-                                Text(
-                                    text = patternHint,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = if (confirmedPattern != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Box(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    PatternLockPad(
-                                        onPatternComplete = { nodes ->
-                                            appLockErr = null
-                                            if (nodes.size < 4) {
-                                                patternHint = "Connect at least 4 dots"
-                                            } else if (firstPattern == null) {
-                                                firstPattern = nodes
-                                                confirmedPattern = null
-                                                patternHint = "Draw the same pattern again to confirm"
-                                            } else if (firstPattern == nodes) {
-                                                confirmedPattern = nodes
-                                                patternHint = "Pattern confirmed!"
-                                            } else {
-                                                firstPattern = null
-                                                confirmedPattern = null
-                                                patternHint = "Patterns did not match. Draw again."
-                                            }
-                                        }
-                                    )
-                                }
+                        Text(
+                            text = patternHint,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (confirmedPattern != null) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
                             }
+                        )
 
-                            LockMethod.PASSWORD -> {
-                                OutlinedTextField(
-                                    value = passDraft,
-                                    onValueChange = { passDraft = it; appLockErr = null },
-                                    label = { Text("AppLock Password (6+ chars)") },
-                                    visualTransformation = PasswordVisualTransformation(),
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                                    singleLine = true,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                OutlinedTextField(
-                                    value = passConfirmDraft,
-                                    onValueChange = { passConfirmDraft = it; appLockErr = null },
-                                    label = { Text("Confirm Password") },
-                                    visualTransformation = PasswordVisualTransformation(),
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                                    singleLine = true,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
-
-                            else -> {
-                                OutlinedTextField(
-                                    value = pinDraft,
-                                    onValueChange = { if (it.length <= 12 && it.all(Char::isDigit)) { pinDraft = it; appLockErr = null } },
-                                    label = { Text("AppLock PIN (4–12 digits)") },
-                                    visualTransformation = PasswordVisualTransformation(),
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                                    singleLine = true,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                OutlinedTextField(
-                                    value = pinConfirmDraft,
-                                    onValueChange = { if (it.length <= 12 && it.all(Char::isDigit)) { pinConfirmDraft = it; appLockErr = null } },
-                                    label = { Text("Confirm AppLock PIN") },
-                                    visualTransformation = PasswordVisualTransformation(),
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                                    singleLine = true,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
-                        }
-
-                        Row(
+                        Box(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            contentAlignment = Alignment.Center
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Fingerprint / Biometric", style = MaterialTheme.typography.titleSmall)
-                                Text(
-                                    text = if (bioAvailable) "Allow fingerprint unlock for locked apps"
-                                    else (bioAvailability as? BiometricAvailability.Unavailable)?.reason
-                                        ?: "Unavailable on device",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Switch(
-                                checked = biometricEnabledDraft,
-                                enabled = bioAvailable,
-                                onCheckedChange = { biometricEnabledDraft = it }
-                            )
-                        }
-
-                        if (bioAvailable && activity != null) {
-                            OutlinedButton(
-                                onClick = {
-                                    BiometricAuthManager.authenticate(
-                                        activity = activity,
-                                        title = "Verify Fingerprint",
-                                        subtitle = "Confirm fingerprint for AppLock",
-                                        onSuccess = {
-                                            biometricEnabledDraft = true
-                                            bioVerifiedNote = "Fingerprint verified!"
-                                        },
-                                        onFailedAttempt = { bioVerifiedNote = "Fingerprint not recognized" },
-                                        onError = { msg -> bioVerifiedNote = msg }
-                                    )
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Icon(Icons.Default.Fingerprint, contentDescription = null)
-                                Text("  Verify Fingerprint")
-                            }
-                        }
-
-                        bioVerifiedNote?.let { note ->
-                            Text(
-                                text = note,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary
+                            PatternLockPad(
+                                onPatternComplete = { nodes ->
+                                    appLockErr = null
+                                    if (nodes.size < 4) {
+                                        patternHint = "Connect at least 4 dots"
+                                    } else if (firstPattern == null) {
+                                        firstPattern = nodes
+                                        confirmedPattern = null
+                                        patternHint = "Draw the same pattern again to confirm"
+                                    } else if (firstPattern == nodes) {
+                                        confirmedPattern = nodes
+                                        patternHint = "Lock Pattern confirmed!"
+                                    } else {
+                                        firstPattern = null
+                                        confirmedPattern = null
+                                        patternHint = "Patterns did not match. Draw again."
+                                    }
+                                }
                             )
                         }
 
@@ -728,86 +598,30 @@ fun CalendarLaunchScreen(
                 },
                 confirmButton = {
                     Button(onClick = {
-                        when (selectedMethod) {
-                            LockMethod.PATTERN -> {
-                                val pattern = confirmedPattern
-                                if (pattern == null || pattern.size < 4) {
-                                    appLockErr = "Draw and confirm your pattern twice"
-                                } else {
-                                    repository.setPattern(pattern)
-                                    repository.updateSettings {
-                                        it.copy(
-                                            preferredLockMethod = LockMethod.PATTERN,
-                                            biometricEnabled = biometricEnabledDraft
-                                        )
-                                    }
-                                    if (!repository.hasRecoveryCodeConfigured()) {
-                                        repository.generateAndStoreRecoveryCode()
-                                    }
-                                    repository.saveSecretDateConfiguration(
-                                        day = chosenDay,
-                                        month = chosenMonth,
-                                        year = null,
-                                        enabled = true,
-                                        newSecretPin = null
-                                    )
-                                    appLockConfigured = true
-                                    pendingSecretDate = null
-                                }
+                        val pattern = confirmedPattern
+                        if (pattern == null || pattern.size < 4) {
+                            appLockErr = "Draw and confirm your pattern twice"
+                        } else {
+                            repository.setPattern(pattern)
+                            repository.updateSettings {
+                                it.copy(
+                                    preferredLockMethod = LockMethod.PATTERN,
+                                    biometricEnabled = false,
+                                    protectionScreenConfig = it.protectionScreenConfig.copy(enabled = false)
+                                )
                             }
-
-                            LockMethod.PASSWORD -> {
-                                if (passDraft.length < 6) {
-                                    appLockErr = "Password must be at least 6 characters"
-                                } else if (passDraft != passConfirmDraft) {
-                                    appLockErr = "Passwords do not match"
-                                } else {
-                                    repository.setPassword(passDraft)
-                                    repository.updateSettings {
-                                        it.copy(
-                                            preferredLockMethod = LockMethod.PASSWORD,
-                                            biometricEnabled = biometricEnabledDraft
-                                        )
-                                    }
-                                    if (!repository.hasRecoveryCodeConfigured()) {
-                                        repository.generateAndStoreRecoveryCode()
-                                    }
-                                    repository.saveSecretDateConfiguration(
-                                        day = chosenDay,
-                                        month = chosenMonth,
-                                        year = null,
-                                        enabled = true,
-                                        newSecretPin = null
-                                    )
-                                    appLockConfigured = true
-                                    pendingSecretDate = null
-                                }
+                            if (!repository.hasRecoveryCodeConfigured()) {
+                                repository.generateAndStoreRecoveryCode()
                             }
-
-                            else -> {
-                                if (pinDraft.length !in 4..12) {
-                                    appLockErr = "PIN must be 4–12 digits"
-                                } else if (pinDraft != pinConfirmDraft) {
-                                    appLockErr = "PINs do not match"
-                                } else {
-                                    repository.setPin(pinDraft)
-                                    repository.updateSettings {
-                                        it.copy(biometricEnabled = biometricEnabledDraft)
-                                    }
-                                    if (!repository.hasRecoveryCodeConfigured()) {
-                                        repository.generateAndStoreRecoveryCode()
-                                    }
-                                    repository.saveSecretDateConfiguration(
-                                        day = chosenDay,
-                                        month = chosenMonth,
-                                        year = null,
-                                        enabled = true,
-                                        newSecretPin = pinDraft
-                                    )
-                                    appLockConfigured = true
-                                    pendingSecretDate = null
-                                }
-                            }
+                            repository.saveSecretDateConfiguration(
+                                day = chosenDay,
+                                month = chosenMonth,
+                                year = null,
+                                enabled = true,
+                                newSecretPin = null
+                            )
+                            appLockConfigured = true
+                            pendingSecretDate = null
                         }
                     }) {
                         Text("Save & Finish")

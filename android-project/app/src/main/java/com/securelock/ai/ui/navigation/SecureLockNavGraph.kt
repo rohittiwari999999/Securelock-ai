@@ -25,12 +25,10 @@ import com.securelock.ai.ui.screens.PrivateBrowserScreen
 import com.securelock.ai.ui.screens.SettingsScreen
 import com.securelock.ai.ui.screens.StatisticsScreen
 import com.securelock.ai.ui.screens.ThemeCustomizationScreen
-import com.securelock.ai.ui.screens.UnlockScreen
 import com.securelock.ai.ui.screens.VaultScreen
 
 object Routes {
     const val CALENDAR_LAUNCH = "calendar_launch"
-    const val UNLOCK = "unlock"
     const val DASHBOARD = "dashboard"
     const val APP_LOCK = "app_lock"
     const val VAULT = "vault"
@@ -52,32 +50,16 @@ fun SecureLockNavHost(
     vaultRepository: VaultRepository
 ) {
     val navController = rememberNavController()
-    val settings by repository.settings.collectAsState()
     val vaultUnlocked by AppLockSessionManager.vaultUnlockedFlow.collectAsState()
     val backStackEntry by navController.currentBackStackEntryAsState()
 
-    val needsSetup = !repository.hasAppLockCredentialConfigured()
-    val secretDateActive = settings.secretDateConfig.enabled
+    val startRoute = if (vaultUnlocked) Routes.DASHBOARD else Routes.CALENDAR_LAUNCH
 
-    val startRoute = when {
-        !vaultUnlocked && secretDateActive -> Routes.CALENDAR_LAUNCH
-        !vaultUnlocked -> Routes.UNLOCK
-        else -> Routes.DASHBOARD
-    }
-
-    // Automatically return to Calendar (or Unlock) when vault relocks in background / screen-off
-    LaunchedEffect(vaultUnlocked, secretDateActive, backStackEntry) {
+    // Always return cleanly to standalone Calendar when session relocks in background / screen-off
+    LaunchedEffect(vaultUnlocked, backStackEntry) {
         val currentRoute = backStackEntry?.destination?.route
-        if (!vaultUnlocked && currentRoute != null &&
-            currentRoute != Routes.CALENDAR_LAUNCH &&
-            currentRoute != Routes.UNLOCK
-        ) {
-            val lockTarget = if (secretDateActive) {
-                Routes.CALENDAR_LAUNCH
-            } else {
-                Routes.UNLOCK
-            }
-            navController.navigate(lockTarget) {
+        if (!vaultUnlocked && currentRoute != null && currentRoute != Routes.CALENDAR_LAUNCH) {
+            navController.navigate(Routes.CALENDAR_LAUNCH) {
                 popUpTo(0) { inclusive = true }
             }
         }
@@ -100,26 +82,10 @@ fun SecureLockNavHost(
             )
         }
 
-        composable(Routes.UNLOCK) {
-            UnlockScreen(
-                activity = activity,
-                repository = repository,
-                targetPackageLabel = "SecureLock AI",
-                targetPackageName = null,
-                isSetupFlow = needsSetup,
-                onUnlocked = {
-                    AppLockSessionManager.unlockVault()
-                    navController.navigate(Routes.DASHBOARD) {
-                        popUpTo(Routes.UNLOCK) { inclusive = true }
-                    }
-                }
-            )
-        }
-
         composable(Routes.DASHBOARD) {
             if (!vaultUnlocked) return@composable
 
-            BackHandler(enabled = secretDateActive) {
+            BackHandler {
                 AppLockSessionManager.lockVault()
                 navController.navigate(Routes.CALENDAR_LAUNCH) {
                     popUpTo(0) { inclusive = true }
@@ -132,8 +98,7 @@ fun SecureLockNavHost(
                 onNavigate = { route -> navController.navigate(route) },
                 onLockNow = {
                     AppLockSessionManager.lockVault()
-                    val lockTarget = if (secretDateActive) Routes.CALENDAR_LAUNCH else Routes.UNLOCK
-                    navController.navigate(lockTarget) {
+                    navController.navigate(Routes.CALENDAR_LAUNCH) {
                         popUpTo(0) { inclusive = true }
                     }
                 }
@@ -177,7 +142,7 @@ fun SecureLockNavHost(
                 onBack = { navController.popBackStack() },
                 onTestAuthReturn = {
                     AppLockSessionManager.lockVault()
-                    navController.navigate(Routes.UNLOCK) {
+                    navController.navigate(Routes.CALENDAR_LAUNCH) {
                         popUpTo(0) { inclusive = true }
                     }
                 }

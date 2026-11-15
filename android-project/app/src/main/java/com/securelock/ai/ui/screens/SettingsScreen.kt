@@ -69,9 +69,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val settings by repository.settings.collectAsState()
 
-    var showChangePinDialog by remember { mutableStateOf(false) }
     var showChangePatternDialog by remember { mutableStateOf(false) }
-    var showChangePasswordDialog by remember { mutableStateOf(false) }
     var showSecretDateDialog by remember { mutableStateOf(false) }
     var showPrivacyPolicyDialog by remember { mutableStateOf(false) }
     var regeneratedRecovery by remember { mutableStateOf<String?>(null) }
@@ -130,57 +128,22 @@ fun SettingsScreen(
             item {
                 WhiteSecurityCard {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Default Lock Method", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(LockMethod.entries) { method ->
-                                FilterChip(
-                                    selected = settings.preferredLockMethod == method,
-                                    onClick = {
-                                        when (method) {
-                                            LockMethod.PATTERN -> if (!repository.hasPatternConfigured()) showChangePatternDialog = true else repository.updateSettings { it.copy(preferredLockMethod = method) }
-                                            LockMethod.PASSWORD -> if (!repository.hasPasswordConfigured()) showChangePasswordDialog = true else repository.updateSettings { it.copy(preferredLockMethod = method) }
-                                            else -> repository.updateSettings { it.copy(preferredLockMethod = method) }
-                                        }
-                                    },
-                                    label = { Text(method.label) }
-                                )
-                            }
-                        }
+                        Text("App Lock Method (Pattern Only)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = if (repository.hasPatternConfigured()) {
+                                "Lock Pattern is active for all protected apps and Vault (no conflicting PIN/Biometric/Decoy gates)."
+                            } else {
+                                "Set a Lock Pattern (4+ dots) to protect your locked apps."
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(
-                                onClick = { showChangePinDialog = true },
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                            ) {
-                                Text("Change PIN")
-                            }
-                            OutlinedButton(onClick = { showChangePatternDialog = true }) {
-                                Text("Set Pattern")
-                            }
-                            OutlinedButton(onClick = { showChangePasswordDialog = true }) {
-                                Text("Set Password")
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                        Button(
+                            onClick = { showChangePatternDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Fingerprint / Biometric Unlock", style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    "Uses Android BiometricPrompt API",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Switch(
-                                checked = settings.biometricEnabled,
-                                onCheckedChange = { enabled ->
-                                    repository.updateSettings { it.copy(biometricEnabled = enabled) }
-                                }
-                            )
+                            Text(if (repository.hasPatternConfigured()) "Change Lock Pattern" else "Set Lock Pattern")
                         }
 
                         OutlinedButton(onClick = {
@@ -336,63 +299,6 @@ fun SettingsScreen(
         }
     }
 
-    if (showChangePinDialog) {
-        var currentPin by remember { mutableStateOf("") }
-        var newPin by remember { mutableStateOf("") }
-        var confirmPin by remember { mutableStateOf("") }
-        var err by remember { mutableStateOf<String?>(null) }
-
-        AlertDialog(
-            onDismissRequest = { showChangePinDialog = false },
-            title = { Text("Change PIN (4, 6, or Custom 4–12 Digits)") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = currentPin,
-                        onValueChange = { if (it.length <= 12 && it.all(Char::isDigit)) currentPin = it },
-                        label = { Text("Current PIN") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        value = newPin,
-                        onValueChange = { if (it.length <= 12 && it.all(Char::isDigit)) newPin = it },
-                        label = { Text("New PIN (4–12 digits)") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        value = confirmPin,
-                        onValueChange = { if (it.length <= 12 && it.all(Char::isDigit)) confirmPin = it },
-                        label = { Text("Confirm New PIN") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        singleLine = true
-                    )
-                    err?.let { Text(it, color = CrimsonAlert, style = MaterialTheme.typography.labelMedium) }
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    if (!repository.verifyPin(currentPin)) {
-                        err = "Current PIN is incorrect"
-                    } else if (newPin.length < 4) {
-                        err = "New PIN must be 4–12 digits"
-                    } else if (newPin != confirmPin) {
-                        err = "New PINs do not match"
-                    } else {
-                        repository.setPin(newPin)
-                        showChangePinDialog = false
-                    }
-                }) {
-                    Text("Save PIN")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showChangePinDialog = false }) { Text("Cancel") }
-            }
-        )
-    }
-
     if (showChangePatternDialog) {
         var firstPattern by remember { mutableStateOf<List<Int>?>(null) }
         var patternStatus by remember { mutableStateOf("Draw a pattern connecting at least 4 dots") }
@@ -411,6 +317,13 @@ fun SettingsScreen(
                                 patternStatus = "Draw the same pattern again to confirm"
                             } else if (firstPattern == nodes) {
                                 repository.setPattern(nodes)
+                                repository.updateSettings {
+                                    it.copy(
+                                        preferredLockMethod = LockMethod.PATTERN,
+                                        biometricEnabled = false,
+                                        protectionScreenConfig = it.protectionScreenConfig.copy(enabled = false)
+                                    )
+                                }
                                 showChangePatternDialog = false
                             } else {
                                 firstPattern = null
@@ -423,56 +336,6 @@ fun SettingsScreen(
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { showChangePatternDialog = false }) { Text("Cancel") }
-            }
-        )
-    }
-
-    if (showChangePasswordDialog) {
-        var newPass by remember { mutableStateOf("") }
-        var confirmPass by remember { mutableStateOf("") }
-        var passErr by remember { mutableStateOf<String?>(null) }
-
-        AlertDialog(
-            onDismissRequest = { showChangePasswordDialog = false },
-            title = { Text("Set Alphanumeric Password") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = newPass,
-                        onValueChange = { newPass = it },
-                        label = { Text("New Password (6+ chars)") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        value = confirmPass,
-                        onValueChange = { confirmPass = it },
-                        label = { Text("Confirm Password") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        singleLine = true
-                    )
-                    passErr?.let { Text(it, color = CrimsonAlert, style = MaterialTheme.typography.labelMedium) }
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    if (newPass.length < 6) {
-                        passErr = "Password must be at least 6 characters"
-                    } else if (newPass != confirmPass) {
-                        passErr = "Passwords do not match"
-                    } else {
-                        repository.setPassword(newPass)
-                        repository.updateSettings { it.copy(preferredLockMethod = LockMethod.PASSWORD) }
-                        showChangePasswordDialog = false
-                    }
-                }) {
-                    Text("Save Password")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showChangePasswordDialog = false }) { Text("Cancel") }
             }
         )
     }

@@ -31,7 +31,6 @@ import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Photo
@@ -81,6 +80,7 @@ import com.securelock.ai.security.BiometricAvailability
 import com.securelock.ai.security.SecureStorageRepository
 import com.securelock.ai.security.VaultRepository
 import com.securelock.ai.service.AppLockSessionManager
+import com.securelock.ai.ui.components.PatternLockPad
 import com.securelock.ai.ui.components.SecureTopBar
 import com.securelock.ai.ui.components.WhiteSecurityCard
 import com.securelock.ai.ui.theme.CrimsonAlert
@@ -194,24 +194,8 @@ fun VaultScreen(
     }
 
     if (!vaultGateUnlocked) {
-        val bioAvailable = remember(context) {
-            settings.biometricEnabled && BiometricAuthManager.checkAvailability(context) is BiometricAvailability.Available
-        }
-        val triggerBio = {
-            BiometricAuthManager.authenticate(
-                activity = activity,
-                title = "Unlock Secret Gallery Vault",
-                subtitle = "Confirm fingerprint or PIN to decrypt private albums",
-                onSuccess = {
-                    AppLockSessionManager.unlockMediaVault()
-                    vaultGateUnlocked = true
-                },
-                onFailedAttempt = { gateError = "Biometric verification failed" },
-                onError = { gateError = it }
-            )
-        }
-        LaunchedEffect(bioAvailable) {
-            if (bioAvailable) triggerBio()
+        val usePatternGate = remember(settings.preferredLockMethod) {
+            repository.hasPatternConfigured()
         }
 
         Scaffold(
@@ -242,48 +226,66 @@ fun VaultScreen(
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "Enter your master PIN or scan fingerprint to access AES-256-GCM encrypted photos and videos.",
+                    text = if (usePatternGate) {
+                        "Draw your Lock Pattern to access AES-256-GCM encrypted photos and videos."
+                    } else {
+                        "Enter your PIN to access AES-256-GCM encrypted photos and videos."
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.78f)
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                OutlinedTextField(
-                    value = gatePinInput,
-                    onValueChange = { if (it.length <= 12 && it.all(Char::isDigit)) gatePinInput = it },
-                    label = { Text("Master PIN") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                gateError?.let {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(it, color = CrimsonAlert, style = MaterialTheme.typography.labelMedium)
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-                Button(
-                    onClick = {
-                        if (repository.verifyPin(gatePinInput)) {
-                            AppLockSessionManager.unlockMediaVault()
-                            vaultGateUnlocked = true
-                            gatePinInput = ""
-                        } else {
-                            gateError = "Incorrect PIN"
-                            gatePinInput = ""
+
+                if (usePatternGate) {
+                    PatternLockPad(
+                        onPatternComplete = { nodes ->
+                            if (nodes.size < 4) {
+                                gateError = "Connect at least 4 dots"
+                            } else if (repository.verifyPattern(nodes)) {
+                                gateError = null
+                                AppLockSessionManager.unlockMediaVault()
+                                vaultGateUnlocked = true
+                            } else {
+                                gateError = "Incorrect pattern"
+                            }
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Unlock Vault")
-                }
-                if (bioAvailable) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedButton(onClick = triggerBio, modifier = Modifier.fillMaxWidth()) {
-                        Icon(Icons.Default.Fingerprint, contentDescription = null)
-                        Text("  Unlock with Fingerprint", color = MaterialTheme.colorScheme.onBackground)
+                    )
+                    gateError?.let {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(it, color = CrimsonAlert, style = MaterialTheme.typography.labelMedium)
+                    }
+                } else {
+                    OutlinedTextField(
+                        value = gatePinInput,
+                        onValueChange = { if (it.length <= 12 && it.all(Char::isDigit)) gatePinInput = it },
+                        label = { Text("Master PIN") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    gateError?.let {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(it, color = CrimsonAlert, style = MaterialTheme.typography.labelMedium)
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = {
+                            if (repository.verifyPin(gatePinInput)) {
+                                AppLockSessionManager.unlockMediaVault()
+                                vaultGateUnlocked = true
+                                gatePinInput = ""
+                            } else {
+                                gateError = "Incorrect PIN"
+                                gatePinInput = ""
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Unlock Vault")
                     }
                 }
             }

@@ -14,7 +14,6 @@ type TopSection = 'preview' | 'source' | 'permissions' | 'setup';
 
 const SIMULATOR_NAV_LIST: Array<{ id: SimulatorScreenId; label: string }> = [
   { id: 'calendar', label: 'Calendar' },
-  { id: 'unlock', label: 'Unlock Gate' },
   { id: 'dashboard', label: '9-Card Dashboard' },
   { id: 'app_lock', label: 'App Lock' },
   { id: 'vault', label: 'Secret Vault' },

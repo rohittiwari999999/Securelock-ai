@@ -13,15 +13,11 @@ import com.securelock.ai.SecureLockApplication
  */
 class AppLockAccessibilityService : AccessibilityService() {
 
-    private var lastPromptedPackage: String? = null
-    private var lastPromptMillis: Long = 0L
-
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val packageName = event.packageName?.toString() ?: return
 
-        if (packageName == this.packageName) return
-        if (packageName == "com.android.systemui") return
+        if (AppLockSessionManager.isSystemTransientPackage(packageName, this.packageName)) return
 
         val repo = (application as SecureLockApplication).storageRepository
         val settings = repo.settings.value
@@ -38,12 +34,7 @@ class AppLockAccessibilityService : AccessibilityService() {
 
         if (!isTargetProtected) return
         if (AppLockSessionManager.isAppTemporarilyUnlocked(packageName)) return
-
-        val now = System.currentTimeMillis()
-        if (packageName == lastPromptedPackage && now - lastPromptMillis < 1000L) return
-
-        lastPromptedPackage = packageName
-        lastPromptMillis = now
+        if (!AppLockSessionManager.tryAcquireOverlayLaunch(packageName)) return
 
         val intent = Intent(this, LockOverlayActivity::class.java).apply {
             addFlags(

@@ -32,16 +32,13 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
- * Opt-in UsageStatsManager monitor for users who prefer Usage Access over Accessibility.
- * Respects battery budget by querying only recent UsageEvents while active and stopping cleanly
- * when disabled or when Usage Access is revoked.
+ * Fallback UsageStatsManager foreground monitor used only when AccessibilityService is disabled.
+ * Coordinates via AppLockSessionManager so only one lock pattern overlay can launch at a time.
  */
 class AppLockMonitorService : Service() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var monitorJob: Job? = null
-    private var lastLaunchedPackage: String? = null
-    private var lastLaunchTimestamp: Long = 0L
     private var lastObservedForegroundPackage: String? = null
     private var lastEventQueryMillis: Long = 0L
 
@@ -54,7 +51,9 @@ class AppLockMonitorService : Service() {
             return START_NOT_STICKY
         }
 
-        if (!PermissionHelper.hasUsageStatsPermission(this)) {
+        if (PermissionHelper.isAccessibilityServiceEnabled(this) ||
+            !PermissionHelper.hasUsageStatsPermission(this)
+        ) {
             setRunningState(false)
             stopSelf()
             return START_NOT_STICKY
@@ -85,7 +84,9 @@ class AppLockMonitorService : Service() {
             lastEventQueryMillis = System.currentTimeMillis() - 5_000L
 
             while (isActive) {
-                if (!PermissionHelper.hasUsageStatsPermission(this@AppLockMonitorService)) {
+                if (PermissionHelper.isAccessibilityServiceEnabled(this@AppLockMonitorService) ||
+                    !PermissionHelper.hasUsageStatsPermission(this@AppLockMonitorService)
+                ) {
                     setRunningState(false)
                     stopSelf()
                     break
@@ -100,8 +101,7 @@ class AppLockMonitorService : Service() {
 
                 val foregroundPackage = detectForegroundPackage(usageStatsManager)
                 if (foregroundPackage != null &&
-                    foregroundPackage != packageName &&
-                    foregroundPackage != "com.android.systemui"
+                    !AppLockSessionManager.isSystemTransientPackage(foregroundPackage, packageName)
                 ) {
                     AppLockSessionManager.onForegroundPackageObserved(
                         observedPackage = foregroundPackage,
@@ -116,22 +116,18 @@ class AppLockMonitorService : Service() {
 
                     if (isProtected &&
                         !AppLockSessionManager.isAppTemporarilyUnlocked(foregroundPackage) &&
-                        Settings.canDrawOverlays(this@AppLockMonitorService)
+                        Settings.canDrawOverlays(this@AppLockMonitorService) &&
+                        AppLockSessionManager.tryAcquireOverlayLaunch(foregroundPackage)
                     ) {
-                        val now = System.currentTimeMillis()
-                        if (foregroundPackage != lastLaunchedPackage || now - lastLaunchTimestamp > 1200L) {
-                            lastLaunchedPackage = foregroundPackage
-                            lastLaunchTimestamp = now
-                            val lockIntent = Intent(this@AppLockMonitorService, LockOverlayActivity::class.java).apply {
-                                addFlags(
-                                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                                        Intent.FLAG_ACTIVITY_NO_ANIMATION
-                                )
-                                putExtra(LockOverlayActivity.EXTRA_TARGET_PACKAGE, foregroundPackage)
-                            }
-                            runCatching { startActivity(lockIntent) }
+                        val lockIntent = Intent(this@AppLockMonitorService, LockOverlayActivity::class.java).apply {
+                            addFlags(
+                                Intent.FLAG_ACTIVITY_NEW_TASK or
+                                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                                    Intent.FLAG_ACTIVITY_NO_ANIMATION
+                            )
+                            putExtra(LockOverlayActivity.EXTRA_TARGET_PACKAGE, foregroundPackage)
                         }
+                        runCatching { startActivity(lockIntent) }
                     }
                 }
                 delay(250L)
@@ -205,7 +201,7 @@ class AppLockMonitorService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setContentTitle("SecureLock AI Protection Active")
-            .setContentText("Monitoring selected apps locally")
+            .setContentText("Pattern Lock protection active")
             .setContentIntent(openIntent)
             .setOngoing(true)
             .setSilent(true)

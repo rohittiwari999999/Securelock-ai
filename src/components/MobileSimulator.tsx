@@ -9,10 +9,8 @@ import {
   ChevronLeft,
   ChevronRight,
   CloudOff,
-  Delete,
   Download,
   Edit3,
-  Fingerprint,
   FolderPlus,
   Globe,
   Grid,
@@ -41,7 +39,6 @@ interface MobileSimulatorProps {
   onScreenChange: (screen: SimulatorScreenId) => void;
 }
 
-type SimLockMethod = 'PIN_4' | 'PIN_6' | 'PIN_CUSTOM' | 'PATTERN' | 'PASSWORD';
 type SimThemeId =
   | 'Midnight Blue'
   | 'Black Gold'
@@ -184,7 +181,6 @@ interface SimApp {
   packageName: string;
   name: string;
   locked: boolean;
-  overrideMethod?: SimLockMethod;
 }
 
 interface SimVaultAlbum {
@@ -236,33 +232,22 @@ interface BrowserTab {
 }
 
 const INITIAL_APPS: SimApp[] = [
-  { packageName: 'com.whatsapp', name: 'WhatsApp', locked: true, overrideMethod: 'PATTERN' },
+  { packageName: 'com.whatsapp', name: 'WhatsApp', locked: true },
   { packageName: 'com.google.android.gm', name: 'Gmail', locked: true },
   { packageName: 'com.google.android.apps.photos', name: 'Google Photos', locked: true },
-  { packageName: 'com.android.settings', name: 'System Settings', locked: true, overrideMethod: 'PASSWORD' },
+  { packageName: 'com.android.settings', name: 'System Settings', locked: true },
   { packageName: 'com.chase.sig.android', name: 'Banking Vault', locked: false },
 ];
 
 export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulatorProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [masterPin, setMasterPin] = useState('2580');
   const [savedPattern, setSavedPattern] = useState<number[]>([0, 1, 4, 7]);
-  const [masterPassword, setMasterPassword] = useState('Vault@2026');
-  const [defaultLockMethod, setDefaultLockMethod] = useState<SimLockMethod>('PIN_4');
-  const [unlockMethod, setUnlockMethod] = useState<SimLockMethod>('PIN_4');
-  const [enteredPin, setEnteredPin] = useState('');
   const [enteredPattern, setEnteredPattern] = useState<number[]>([]);
-  const [enteredPassword, setEnteredPassword] = useState('');
-  const [authStatus, setAuthStatus] = useState('Verify identity to unlock SecureLock AI');
   const [authError, setAuthError] = useState(false);
-  const [consecutiveFails, setConsecutiveFails] = useState(0);
-  const [showForegroundCapturePrompt, setShowForegroundCapturePrompt] = useState(false);
 
-  const [biometricEnabled, setBiometricEnabled] = useState(true);
   const [relockTimeout, setRelockTimeout] = useState(30);
   const [lockOnScreenOff, setLockOnScreenOff] = useState(true);
-  const [protectSettings, setProtectSettings] = useState(true);
   const [foregroundPromptEnabled, setForegroundPromptEnabled] = useState(true);
   const [intruderThreshold, setIntruderThreshold] = useState(3);
   const [lockNotificationsEnabled, setLockNotificationsEnabled] = useState(true);
@@ -278,13 +263,8 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
         secretDay: number;
         secretMonth: number;
         secretYear: string;
-        secretPin: string;
-        hasPinSecret?: boolean;
-        masterPin: string;
-        lockMethod: SimLockMethod;
+        secretPin?: string;
         pattern: number[];
-        password: string;
-        biometric: boolean;
       }) : null;
     } catch {
       return null;
@@ -292,19 +272,12 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
   }, []);
 
   const [simAppLockConfigured, setSimAppLockConfigured] = useState<boolean>(savedSimSetup?.done ?? false);
-  const [simHasPinSecret, setSimHasPinSecret] = useState<boolean>(savedSimSetup?.hasPinSecret ?? true);
   const [pendingChosenDate, setPendingChosenDate] = useState<{ day: number; month: number; year: number } | null>(null);
 
-  const [appLockSetupMethod, setAppLockSetupMethod] = useState<SimLockMethod>('PIN_4');
-  const [setupAppPinInput, setSetupAppPinInput] = useState<string>('');
-  const [setupAppPinConfirm, setSetupAppPinConfirm] = useState<string>('');
   const [setupFirstPattern, setSetupFirstPattern] = useState<number[] | null>(null);
   const [setupConfirmedPattern, setSetupConfirmedPattern] = useState<number[] | null>(null);
   const [setupPatternDraft, setSetupPatternDraft] = useState<number[]>([]);
   const [setupPatternHint, setSetupPatternHint] = useState<string>('Tap dots to draw pattern (4+ nodes)');
-  const [setupPassInput, setSetupPassInput] = useState<string>('');
-  const [setupPassConfirm, setSetupPassConfirm] = useState<string>('');
-  const [setupBioDraft, setSetupBioDraft] = useState<boolean>(true);
   const [appLockModalError, setAppLockModalError] = useState<string | null>(null);
 
   const [secretDateEnabled, setSecretDateEnabled] = useState(true);
@@ -314,13 +287,8 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
   const [secretPin, setSecretPin] = useState(savedSimSetup?.secretPin ?? '2580');
 
   useEffect(() => {
-    if (savedSimSetup?.done) {
-      setMasterPin(savedSimSetup.masterPin);
-      setDefaultLockMethod(savedSimSetup.lockMethod);
-      setUnlockMethod(savedSimSetup.lockMethod);
+    if (savedSimSetup?.done && Array.isArray(savedSimSetup.pattern) && savedSimSetup.pattern.length >= 4) {
       setSavedPattern(savedSimSetup.pattern);
-      setMasterPassword(savedSimSetup.password);
-      setBiometricEnabled(savedSimSetup.biometric);
     }
   }, [savedSimSetup]);
 
@@ -370,7 +338,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
 
   // Secret Gallery Vault State
   const [vaultUnlocked, setVaultUnlocked] = useState(false);
-  const [vaultPinInput, setVaultPinInput] = useState('');
+  const [vaultPatternDraft, setVaultPatternDraft] = useState<number[]>([]);
   const [vaultPinError, setVaultPinError] = useState<string | null>(null);
   const [vaultAlbums, setVaultAlbums] = useState<SimVaultAlbum[]>([
     { id: 'alb-1', name: 'Private Roll' },
@@ -413,6 +381,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
   const [apps, setApps] = useState<SimApp[]>(INITIAL_APPS);
   const [appSearch, setAppSearch] = useState('');
   const [launchedTargetApp, setLaunchedTargetApp] = useState<string | null>(null);
+  const [patternOverlayTarget, setPatternOverlayTarget] = useState<string | null>(null);
 
   // Decoy Screen State
   const [coverEnabled, setCoverEnabled] = useState(false);
@@ -454,7 +423,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
     },
   ]);
 
-  const [stats, setStats] = useState({
+  const [stats] = useState({
     total: 42,
     success: 39,
     failed: 3,
@@ -469,17 +438,17 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
     ],
   });
 
-  const [events, setEvents] = useState<SimEvent[]>([
+  const [events] = useState<SimEvent[]>([
     {
       id: 'ev-1',
-      title: 'Biometric unlock succeeded',
-      detail: 'Target: SecureLock AI',
+      title: 'Pattern unlock succeeded',
+      detail: 'Target: WhatsApp',
       time: '09:45:10',
       success: true,
     },
     {
       id: 'ev-2',
-      title: 'PIN unlock failed',
+      title: 'Pattern unlock failed',
       detail: 'Target: Google Photos',
       time: '09:14:22',
       success: false,
@@ -499,13 +468,8 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
   const [urlInput, setUrlInput] = useState('https://duckduckgo.com');
   const [httpWarningUrl, setHttpWarningUrl] = useState<string | null>(null);
 
-  const [pinEditorOpen, setPinEditorOpen] = useState(false);
-  const [newPinDraft, setNewPinDraft] = useState('');
-  const [confirmPinDraft, setConfirmPinDraft] = useState('');
   const [patternEditorOpen, setPatternEditorOpen] = useState(false);
   const [newPatternDraft, setNewPatternDraft] = useState<number[]>([]);
-  const [passwordEditorOpen, setPasswordEditorOpen] = useState(false);
-  const [newPasswordDraft, setNewPasswordDraft] = useState('');
 
   const lockedCount = useMemo(() => apps.filter((a) => a.locked).length, [apps]);
   const totalVaultUsed = useMemo(
@@ -520,103 +484,9 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
         ? 'rounded-xl shadow-sm'
         : 'rounded-2xl shadow-md';
 
-  const recordAttempt = (success: boolean, method: string, target = 'SecureLock AI') => {
-    const nowTime = new Date().toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-    setStats((prev) => {
-      const updatedWeekly = prev.weekly.map((item, idx) =>
-        idx === prev.weekly.length - 1
-          ? {
-              ...item,
-              ok: item.ok + (success ? 1 : 0),
-              fail: item.fail + (success ? 0 : 1),
-            }
-          : item
-      );
-      return {
-        total: prev.total + 1,
-        success: prev.success + (success ? 1 : 0),
-        failed: prev.failed + (success ? 0 : 1),
-        weekly: updatedWeekly,
-      };
-    });
-    setEvents((prev) => [
-      {
-        id: `ev-${Date.now()}`,
-        title: `${method} unlock ${success ? 'succeeded' : 'failed'}`,
-        detail: `Target: ${target}`,
-        time: nowTime,
-        success,
-      },
-      ...prev.slice(0, 14),
-    ]);
-
-    if (success) {
-      setConsecutiveFails(0);
-      setAuthError(false);
-      setAuthStatus('Identity verified');
-      setEnteredPin('');
-      setEnteredPattern([]);
-      setEnteredPassword('');
-      setLaunchedTargetApp(null);
-      onScreenChange('dashboard');
-    } else {
-      const nextFails = consecutiveFails + 1;
-      setConsecutiveFails(nextFails);
-      setAuthError(true);
-      setAuthStatus(`${method} failed (${nextFails} failed attempt${nextFails > 1 ? 's' : ''})`);
-      if (nextFails >= intruderThreshold) {
-        setIntruders((prev) => [
-          {
-            id: `int-${Date.now()}`,
-            time: `Today · ${nowTime}`,
-            attempts: nextFails,
-            target,
-            method,
-            hasPhoto: false,
-          },
-          ...prev,
-        ]);
-        if (foregroundPromptEnabled) {
-          setShowForegroundCapturePrompt(true);
-        }
-      }
-    }
-  };
-
-  const handlePinDigit = (digit: string) => {
-    const maxLen = Math.max(masterPin.length, 4);
-    if (enteredPin.length >= 12) return;
-    const next = enteredPin + digit;
-    setEnteredPin(next);
-    setAuthError(false);
-    if (next === masterPin) {
-      recordAttempt(true, 'PIN', launchedTargetApp ?? 'SecureLock AI');
-    } else if (next.length >= maxLen) {
-      setEnteredPin('');
-      recordAttempt(false, 'PIN', launchedTargetApp ?? 'SecureLock AI');
-    }
-  };
-
   const handlePatternTap = (node: number) => {
     if (enteredPattern.includes(node)) return;
     setEnteredPattern([...enteredPattern, node]);
-  };
-
-  const submitPattern = () => {
-    if (enteredPattern.length < 4) {
-      setAuthError(true);
-      setAuthStatus('Connect at least 4 nodes');
-      return;
-    }
-    const matches =
-      enteredPattern.length === savedPattern.length &&
-      enteredPattern.every((v, i) => v === savedPattern[i]);
-    setEnteredPattern([]);
-    recordAttempt(matches, 'Pattern', launchedTargetApp ?? 'SecureLock AI');
   };
 
   const handleVaultFilesSelected = (e: ChangeEvent<HTMLInputElement>) => {
@@ -650,7 +520,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
             type="button"
             onClick={() => {
               setShowingCoverPreview(false);
-              onScreenChange('unlock');
+              setPatternOverlayTarget(launchedTargetApp ?? 'WhatsApp');
             }}
             className="text-[11px] text-white/40 hover:text-white/80"
           >
@@ -698,7 +568,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
             type="button"
             onClick={() => {
               setShowingCoverPreview(false);
-              onScreenChange('unlock');
+              setPatternOverlayTarget(launchedTargetApp ?? 'WhatsApp');
             }}
             className="w-full py-2.5 px-4 rounded-xl text-white text-xs font-semibold transition-opacity hover:opacity-90 mb-2"
             style={{ backgroundColor: activeTheme.accent }}
@@ -731,7 +601,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
     {
       id: 'app_lock',
       title: 'App Lock',
-      subtitle: 'Per-app auth & relock',
+      subtitle: 'Lock Pattern protection',
       metric: `${lockedCount} Locked`,
       icon: Lock,
     },
@@ -879,14 +749,10 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
     if (!simAppLockConfigured) {
       if (nextCount >= 5) {
         setCalTapState({ day: 0, month: 0, year: 0, count: 0, lastTapAt: 0 });
-        setSetupAppPinInput('');
-        setSetupAppPinConfirm('');
         setSetupFirstPattern(null);
         setSetupConfirmedPattern(null);
         setSetupPatternDraft([]);
         setSetupPatternHint('Tap dots to draw pattern (4+ nodes)');
-        setSetupPassInput('');
-        setSetupPassConfirm('');
         setAppLockModalError(null);
         setPendingChosenDate({ day, month: calMonth, year: calYear });
         return;
@@ -1090,168 +956,77 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                 <p className="text-xs text-[#5F6368] pt-1">No events scheduled for this day</p>
               </div>
 
-              {/* Step 2: Direct AppLock Setup Window (opens immediately after 5 taps on chosen date; no Calendar Lock popup) */}
+              {/* Step 2: Direct Pattern Lock Setup Window (Pattern Lock only) */}
               {pendingChosenDate && !simAppLockConfigured && (
                 <div className="absolute inset-0 bg-black/50 flex items-center justify-center p-4 z-30">
                   <div className="bg-white rounded-3xl p-5 w-full max-w-[310px] shadow-2xl space-y-3 text-[#1F1F1F] max-h-[610px] overflow-y-auto">
-                    <div className="text-base font-bold">Step 2: AppLock Setup</div>
+                    <div className="text-base font-bold">Step 2: Set Lock Pattern</div>
                     <p className="text-[11px] text-[#5F6368]">
-                      Choose how you want to lock and unlock your apps:
+                      Draw a lock pattern to protect your locked apps (Pattern Lock only):
                     </p>
-                    <div className="flex gap-1.5">
-                      {(
-                        [
-                          ['PIN_4', 'PIN'],
-                          ['PATTERN', 'Pattern'],
-                          ['PASSWORD', 'Password'],
-                        ] as Array<[SimLockMethod, string]>
-                      ).map(([m, label]) => (
+
+                    <div className="space-y-2">
+                      <div className="text-[11px] font-medium text-[#1A73E8]">{setupPatternHint}</div>
+                      <div className="grid grid-cols-3 gap-2 max-w-[165px] mx-auto bg-slate-100 p-3 rounded-2xl">
+                        {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => {
+                          const idx = setupPatternDraft.indexOf(n);
+                          return (
+                            <button
+                              key={n}
+                              type="button"
+                              onClick={() =>
+                                !setupPatternDraft.includes(n) &&
+                                setSetupPatternDraft([...setupPatternDraft, n])
+                              }
+                              className={`h-9 rounded-full text-xs font-bold ${
+                                idx >= 0
+                                  ? 'bg-[#1A73E8] text-white'
+                                  : 'bg-white text-slate-700 border border-slate-300'
+                              }`}
+                            >
+                              {idx >= 0 ? idx + 1 : n + 1}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="flex justify-center gap-2">
                         <button
-                          key={m}
+                          type="button"
+                          onClick={() => setSetupPatternDraft([])}
+                          className="px-2.5 py-1 rounded-lg bg-slate-100 text-[11px]"
+                        >
+                          Clear
+                        </button>
+                        <button
                           type="button"
                           onClick={() => {
-                            setAppLockSetupMethod(m);
-                            setAppLockModalError(null);
+                            if (setupPatternDraft.length < 4) {
+                              setSetupPatternHint('Connect at least 4 nodes');
+                              return;
+                            }
+                            if (!setupFirstPattern) {
+                              setSetupFirstPattern(setupPatternDraft);
+                              setSetupPatternDraft([]);
+                              setSetupPatternHint('Tap same pattern again to confirm');
+                            } else if (
+                              setupFirstPattern.length === setupPatternDraft.length &&
+                              setupFirstPattern.every((v, i) => v === setupPatternDraft[i])
+                            ) {
+                              setSetupConfirmedPattern(setupPatternDraft);
+                              setSetupPatternDraft([]);
+                              setSetupPatternHint('Lock Pattern confirmed!');
+                            } else {
+                              setSetupFirstPattern(null);
+                              setSetupConfirmedPattern(null);
+                              setSetupPatternDraft([]);
+                              setSetupPatternHint('Did not match. Draw again.');
+                            }
                           }}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
-                            appLockSetupMethod === m
-                              ? 'bg-[#1A73E8] text-white'
-                              : 'bg-slate-100 text-[#1F1F1F]'
-                          }`}
+                          className="px-3 py-1 rounded-lg bg-[#1A73E8] text-white text-[11px] font-semibold"
                         >
-                          {label}
+                          {setupFirstPattern ? 'Confirm Pattern' : 'Set First Pattern'}
                         </button>
-                      ))}
-                    </div>
-
-                    {appLockSetupMethod === 'PATTERN' ? (
-                      <div className="space-y-2">
-                        <div className="text-[11px] font-medium text-[#1A73E8]">{setupPatternHint}</div>
-                        <div className="grid grid-cols-3 gap-2 max-w-[165px] mx-auto bg-slate-100 p-3 rounded-2xl">
-                          {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => {
-                            const idx = setupPatternDraft.indexOf(n);
-                            return (
-                              <button
-                                key={n}
-                                type="button"
-                                onClick={() =>
-                                  !setupPatternDraft.includes(n) &&
-                                  setSetupPatternDraft([...setupPatternDraft, n])
-                                }
-                                className={`h-9 rounded-full text-xs font-bold ${
-                                  idx >= 0
-                                    ? 'bg-[#1A73E8] text-white'
-                                    : 'bg-white text-slate-700 border border-slate-300'
-                                }`}
-                              >
-                                {idx >= 0 ? idx + 1 : n + 1}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <div className="flex justify-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setSetupPatternDraft([])}
-                            className="px-2.5 py-1 rounded-lg bg-slate-100 text-[11px]"
-                          >
-                            Clear
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (setupPatternDraft.length < 4) {
-                                setSetupPatternHint('Connect at least 4 nodes');
-                                return;
-                              }
-                              if (!setupFirstPattern) {
-                                setSetupFirstPattern(setupPatternDraft);
-                                setSetupPatternDraft([]);
-                                setSetupPatternHint('Tap same pattern again to confirm');
-                              } else if (
-                                setupFirstPattern.length === setupPatternDraft.length &&
-                                setupFirstPattern.every((v, i) => v === setupPatternDraft[i])
-                              ) {
-                                setSetupConfirmedPattern(setupPatternDraft);
-                                setSetupPatternDraft([]);
-                                setSetupPatternHint('Pattern confirmed!');
-                              } else {
-                                setSetupFirstPattern(null);
-                                setSetupConfirmedPattern(null);
-                                setSetupPatternDraft([]);
-                                setSetupPatternHint('Did not match. Draw again.');
-                              }
-                            }}
-                            className="px-3 py-1 rounded-lg bg-[#1A73E8] text-white text-[11px] font-semibold"
-                          >
-                            {setupFirstPattern ? 'Confirm Pattern' : 'Set First Pattern'}
-                          </button>
-                        </div>
                       </div>
-                    ) : appLockSetupMethod === 'PASSWORD' ? (
-                      <div className="space-y-2">
-                        <input
-                          type="password"
-                          value={setupPassInput}
-                          onChange={(e) => {
-                            setSetupPassInput(e.target.value);
-                            setAppLockModalError(null);
-                          }}
-                          placeholder="AppLock Password (6+ chars)"
-                          className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white"
-                        />
-                        <input
-                          type="password"
-                          value={setupPassConfirm}
-                          onChange={(e) => {
-                            setSetupPassConfirm(e.target.value);
-                            setAppLockModalError(null);
-                          }}
-                          placeholder="Confirm Password"
-                          className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white"
-                        />
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <input
-                          type="password"
-                          maxLength={12}
-                          value={setupAppPinInput}
-                          onChange={(e) => {
-                            setSetupAppPinInput(e.target.value.replace(/\D/g, ''));
-                            setAppLockModalError(null);
-                          }}
-                          placeholder="AppLock PIN (4–12 digits)"
-                          className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white"
-                        />
-                        <input
-                          type="password"
-                          maxLength={12}
-                          value={setupAppPinConfirm}
-                          onChange={(e) => {
-                            setSetupAppPinConfirm(e.target.value.replace(/\D/g, ''));
-                            setAppLockModalError(null);
-                          }}
-                          placeholder="Confirm AppLock PIN"
-                          className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white"
-                        />
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between pt-1">
-                      <div className="flex items-center gap-2">
-                        <Fingerprint className="w-4 h-4 text-[#1A73E8]" />
-                        <span className="text-xs font-medium">Fingerprint Unlock</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setSetupBioDraft(!setupBioDraft)}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold ${
-                          setupBioDraft ? 'bg-[#1A73E8] text-white' : 'bg-slate-200 text-slate-700'
-                        }`}
-                      >
-                        {setupBioDraft ? 'On' : 'Off'}
-                      </button>
                     </div>
 
                     {appLockModalError && (
@@ -1269,67 +1044,15 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                       <button
                         type="button"
                         onClick={() => {
-                          let nextMasterPin = masterPin;
-                          let nextPattern = savedPattern;
-                          let nextPassword = masterPassword;
-                          let nextMethod: SimLockMethod = appLockSetupMethod;
-                          let nextSecretPin = secretPin;
-                          let nextHasPinSecret = simHasPinSecret;
-
-                          if (appLockSetupMethod === 'PATTERN') {
-                            if (!setupConfirmedPattern || setupConfirmedPattern.length < 4) {
-                              setAppLockModalError('Confirm your pattern twice first');
-                              return;
-                            }
-                            nextPattern = setupConfirmedPattern;
-                            nextHasPinSecret = false;
-                            setSavedPattern(nextPattern);
-                            setDefaultLockMethod('PATTERN');
-                            setUnlockMethod('PATTERN');
-                          } else if (appLockSetupMethod === 'PASSWORD') {
-                            if (setupPassInput.length < 6) {
-                              setAppLockModalError('Password must be 6+ characters');
-                              return;
-                            }
-                            if (setupPassInput !== setupPassConfirm) {
-                              setAppLockModalError('Passwords do not match');
-                              return;
-                            }
-                            nextPassword = setupPassInput;
-                            nextHasPinSecret = false;
-                            setMasterPassword(nextPassword);
-                            setDefaultLockMethod('PASSWORD');
-                            setUnlockMethod('PASSWORD');
-                          } else {
-                            if (setupAppPinInput.length < 4 || setupAppPinInput.length > 12) {
-                              setAppLockModalError('AppLock PIN must be 4–12 digits');
-                              return;
-                            }
-                            if (setupAppPinInput !== setupAppPinConfirm) {
-                              setAppLockModalError('AppLock PINs do not match');
-                              return;
-                            }
-                            nextMasterPin = setupAppPinInput;
-                            nextSecretPin = setupAppPinInput;
-                            nextHasPinSecret = true;
-                            nextMethod =
-                              setupAppPinInput.length === 6
-                                ? 'PIN_6'
-                                : setupAppPinInput.length === 4
-                                  ? 'PIN_4'
-                                  : 'PIN_CUSTOM';
-                            setMasterPin(nextMasterPin);
-                            setSecretPin(nextSecretPin);
-                            setDefaultLockMethod(nextMethod);
-                            setUnlockMethod(nextMethod);
+                          if (!setupConfirmedPattern || setupConfirmedPattern.length < 4) {
+                            setAppLockModalError('Confirm your pattern twice first');
+                            return;
                           }
-
+                          setSavedPattern(setupConfirmedPattern);
                           setSecretDay(pendingChosenDate.day);
                           setSecretMonth(pendingChosenDate.month);
                           setSecretYear('');
                           setSecretDateEnabled(true);
-                          setSimHasPinSecret(nextHasPinSecret);
-                          setBiometricEnabled(setupBioDraft);
                           setSimAppLockConfigured(true);
                           setPendingChosenDate(null);
                           setAppLockModalError(null);
@@ -1341,13 +1064,8 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                                 secretDay: pendingChosenDate.day,
                                 secretMonth: pendingChosenDate.month,
                                 secretYear: '',
-                                secretPin: nextSecretPin,
-                                hasPinSecret: nextHasPinSecret,
-                                masterPin: nextMasterPin,
-                                lockMethod: nextMethod,
-                                pattern: nextPattern,
-                                password: nextPassword,
-                                biometric: setupBioDraft,
+                                secretPin: secretPin,
+                                pattern: setupConfirmedPattern,
                               })
                             );
                           } catch {
@@ -1362,239 +1080,6 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                   </div>
                 </div>
               )}
-            </div>
-          ) : activeScreen === 'unlock' ? (
-            <div className="p-5 flex flex-col justify-between min-h-full">
-              <div className="text-center">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (biometricEnabled) {
-                      recordAttempt(true, 'Biometric', launchedTargetApp ?? 'SecureLock AI');
-                    }
-                  }}
-                  title="Tap to test BiometricPrompt success"
-                  className="w-20 h-20 rounded-full mx-auto flex items-center justify-center transition-transform hover:scale-105"
-                  style={{
-                    backgroundColor: activeTheme.surface,
-                    border: `1px solid ${activeTheme.secondary}55`,
-                  }}
-                >
-                  <Fingerprint className="w-11 h-11" style={{ color: activeTheme.secondary }} />
-                </button>
-                <h3 className="mt-3 text-lg font-bold">
-                  {launchedTargetApp ? `Unlock ${launchedTargetApp}` : 'SecureLock AI'}
-                </h3>
-                <p
-                  className={`mt-1 text-xs ${
-                    authError ? 'text-rose-400' : 'opacity-75'
-                  }`}
-                >
-                  {authStatus}
-                </p>
-
-                <div
-                  className="mt-3 inline-flex p-1 rounded-xl gap-1"
-                  style={{ backgroundColor: activeTheme.surface }}
-                >
-                  {(
-                    [
-                      ['PIN_4', `PIN (${masterPin})`],
-                      ['PATTERN', 'Pattern'],
-                      ['PASSWORD', 'Password'],
-                    ] as Array<[SimLockMethod, string]>
-                  ).map(([m, label]) => (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => {
-                        setUnlockMethod(m);
-                        setAuthError(false);
-                      }}
-                      className="px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors"
-                      style={
-                        unlockMethod === m
-                          ? { backgroundColor: activeTheme.accent, color: '#FFFFFF' }
-                          : { color: activeTheme.fg }
-                      }
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {unlockMethod === 'PATTERN' ? (
-                <div className="my-4 text-center">
-                  <p className="text-[11px] opacity-70 mb-2">
-                    Tap nodes in order (default: 1 → 2 → 5 → 8)
-                  </p>
-                  <div
-                    className="grid grid-cols-3 gap-4 max-w-[180px] mx-auto p-4 rounded-2xl"
-                    style={{ backgroundColor: activeTheme.surface }}
-                  >
-                    {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((node) => {
-                      const activeIdx = enteredPattern.indexOf(node);
-                      return (
-                        <button
-                          key={node}
-                          type="button"
-                          onClick={() => handlePatternTap(node)}
-                          className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold transition-colors"
-                          style={
-                            activeIdx >= 0
-                              ? { backgroundColor: activeTheme.secondary, color: '#0A1628' }
-                              : { backgroundColor: 'rgba(255,255,255,0.14)', color: activeTheme.fg }
-                          }
-                        >
-                          {activeIdx >= 0 ? activeIdx + 1 : node + 1}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className="flex justify-center gap-2 mt-3">
-                    <button
-                      type="button"
-                      onClick={() => setEnteredPattern([])}
-                      className="px-3 py-1.5 rounded-lg bg-white/10 text-xs"
-                    >
-                      Clear
-                    </button>
-                    <button
-                      type="button"
-                      onClick={submitPattern}
-                      className="px-4 py-1.5 rounded-lg text-white text-xs font-semibold"
-                      style={{ backgroundColor: activeTheme.accent }}
-                    >
-                      Verify Pattern
-                    </button>
-                  </div>
-                </div>
-              ) : unlockMethod === 'PASSWORD' ? (
-                <div className="my-6 space-y-3">
-                  <input
-                    type="password"
-                    value={enteredPassword}
-                    onChange={(e) => setEnteredPassword(e.target.value)}
-                    placeholder={`Enter password (default: ${masterPassword})`}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-white text-[#0A1628] text-xs"
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      recordAttempt(
-                        enteredPassword === masterPassword,
-                        'Password',
-                        launchedTargetApp ?? 'SecureLock AI'
-                      )
-                    }
-                    className="w-full py-2.5 rounded-xl text-white text-xs font-semibold"
-                    style={{ backgroundColor: activeTheme.accent }}
-                  >
-                    Unlock with Password
-                  </button>
-                </div>
-              ) : (
-                <div className="my-4">
-                  <div className="flex justify-center gap-2.5 mb-5">
-                    {Array.from({ length: Math.max(masterPin.length, 4) }).map((_, idx) => (
-                      <span
-                        key={idx}
-                        className="w-3 h-3 rounded-full transition-colors"
-                        style={{
-                          backgroundColor:
-                            idx < enteredPin.length ? activeTheme.secondary : 'rgba(148,163,184,0.35)',
-                        }}
-                      />
-                    ))}
-                  </div>
-                  <div className="grid grid-cols-3 gap-3 max-w-[232px] mx-auto">
-                    {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
-                      <button
-                        key={d}
-                        type="button"
-                        onClick={() => handlePinDigit(d)}
-                        className="h-14 rounded-full text-lg font-semibold transition-opacity hover:opacity-80"
-                        style={{ backgroundColor: activeTheme.surface }}
-                      >
-                        {d}
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        biometricEnabled &&
-                        recordAttempt(true, 'Biometric', launchedTargetApp ?? 'SecureLock AI')
-                      }
-                      disabled={!biometricEnabled}
-                      className="h-14 rounded-full disabled:opacity-40 flex items-center justify-center"
-                      style={{ backgroundColor: `${activeTheme.accent}33` }}
-                      aria-label="BiometricPrompt unlock"
-                    >
-                      <Fingerprint className="w-6 h-6" style={{ color: activeTheme.secondary }} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handlePinDigit('0')}
-                      className="h-14 rounded-full text-lg font-semibold transition-opacity hover:opacity-80"
-                      style={{ backgroundColor: activeTheme.surface }}
-                    >
-                      0
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEnteredPin((p) => p.slice(0, -1))}
-                      className="h-14 rounded-full flex items-center justify-center"
-                      style={{ backgroundColor: activeTheme.surface }}
-                      aria-label="Backspace"
-                    >
-                      <Delete className="w-5 h-5" />
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex flex-col gap-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    recordAttempt(false, unlockMethod, launchedTargetApp ?? 'SecureLock AI')
-                  }
-                  className="w-full py-2 rounded-xl bg-rose-500/20 text-rose-300 text-xs font-medium hover:bg-rose-500/30"
-                >
-                  Simulate Failed Attempt (Threshold: {intruderThreshold})
-                </button>
-                {showForegroundCapturePrompt && (
-                  <div className="bg-white text-[#0A1628] rounded-2xl p-3 text-left shadow-lg">
-                    <div className="text-xs font-bold mb-1">Foreground Camera Prompt</div>
-                    <p className="text-[11px] text-slate-600 mb-2">
-                      Threshold of {intruderThreshold} failed attempts reached. Capture an encrypted foreground snapshot?
-                    </p>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIntruders((prev) =>
-                            prev.map((item, idx) => (idx === 0 ? { ...item, hasPhoto: true } : item))
-                          );
-                          setShowForegroundCapturePrompt(false);
-                        }}
-                        className="px-3 py-1.5 rounded-lg text-white text-[11px] font-semibold"
-                        style={{ backgroundColor: activeTheme.accent }}
-                      >
-                        Capture &amp; Encrypt
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowForegroundCapturePrompt(false)}
-                        className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-[11px]"
-                      >
-                        Skip
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
             </div>
           ) : activeScreen === 'dashboard' ? (
             <div className="p-4 space-y-3">
@@ -1647,7 +1132,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                 </div>
                 <button
                   type="button"
-                  onClick={() => onScreenChange(secretDateEnabled ? 'calendar' : 'unlock')}
+                  onClick={() => onScreenChange('calendar')}
                   className="text-xs font-semibold"
                   style={{ color: activeTheme.secondary }}
                 >
@@ -1711,7 +1196,7 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                 </div>
                 <button
                   type="button"
-                  onClick={() => onScreenChange(secretDateEnabled ? 'calendar' : 'unlock')}
+                  onClick={() => onScreenChange('calendar')}
                   className="text-[11px] font-medium"
                   style={{ color: activeTheme.secondary }}
                 >
@@ -1739,15 +1224,31 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                         <Lock className="w-9 h-9 mx-auto" style={{ color: activeTheme.accent }} />
                         <div className="text-sm font-bold">Vault Locked</div>
                         <p className="text-xs opacity-75">
-                          Enter PIN ({masterPin}) or use fingerprint to decrypt private albums.
+                          Draw your Lock Pattern ({savedPattern.map((n) => n + 1).join(' → ')}) to decrypt private albums.
                         </p>
-                        <input
-                          type="password"
-                          value={vaultPinInput}
-                          onChange={(e) => setVaultPinInput(e.target.value)}
-                          placeholder="Enter Master PIN"
-                          className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs text-[#0A1628] bg-white"
-                        />
+                        <div className="grid grid-cols-3 gap-2 max-w-[156px] mx-auto bg-slate-100 p-3 rounded-2xl">
+                          {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => {
+                            const idx = vaultPatternDraft.indexOf(n);
+                            return (
+                              <button
+                                key={n}
+                                type="button"
+                                onClick={() =>
+                                  !vaultPatternDraft.includes(n) &&
+                                  setVaultPatternDraft([...vaultPatternDraft, n])
+                                }
+                                className="h-9 rounded-full text-xs font-bold"
+                                style={
+                                  idx >= 0
+                                    ? { backgroundColor: activeTheme.accent, color: '#FFFFFF' }
+                                    : { backgroundColor: '#FFFFFF', color: '#0A1628', border: '1px solid #CBD5E1' }
+                                }
+                              >
+                                {idx >= 0 ? idx + 1 : n + 1}
+                              </button>
+                            );
+                          })}
+                        </div>
                         {vaultPinError && (
                           <div className="text-xs text-rose-500 font-medium">{vaultPinError}</div>
                         )}
@@ -1755,29 +1256,33 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                           <button
                             type="button"
                             onClick={() => {
-                              if (vaultPinInput === masterPin) {
+                              setVaultPatternDraft([]);
+                              setVaultPinError(null);
+                            }}
+                            className="px-3 py-2 rounded-xl bg-slate-200 text-[#0A1628] text-xs font-semibold"
+                          >
+                            Clear
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const ok =
+                                vaultPatternDraft.length >= 4 &&
+                                vaultPatternDraft.length === savedPattern.length &&
+                                vaultPatternDraft.every((v, i) => v === savedPattern[i]);
+                              if (ok) {
                                 setVaultUnlocked(true);
-                                setVaultPinInput('');
+                                setVaultPatternDraft([]);
                                 setVaultPinError(null);
                               } else {
-                                setVaultPinError('Incorrect PIN');
+                                setVaultPatternDraft([]);
+                                setVaultPinError('Incorrect Lock Pattern');
                               }
                             }}
                             className="flex-1 py-2 rounded-xl text-white text-xs font-semibold"
                             style={{ backgroundColor: activeTheme.accent }}
                           >
-                            Unlock PIN
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setVaultUnlocked(true);
-                              setVaultPinError(null);
-                            }}
-                            className="px-3 py-2 rounded-xl bg-slate-200 text-[#0A1628] text-xs font-semibold inline-flex items-center gap-1"
-                          >
-                            <Fingerprint className="w-3.5 h-3.5" />
-                            <span>Bio</span>
+                            Unlock Vault
                           </button>
                         </div>
                       </div>
@@ -2136,13 +1641,13 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                                 type="button"
                                 onClick={() => {
                                   setLaunchedTargetApp(app.name);
-                                  setUnlockMethod(app.overrideMethod ?? defaultLockMethod);
-                                  if (coverEnabled) setShowingCoverPreview(true);
-                                  else onScreenChange('unlock');
+                                  setEnteredPattern([]);
+                                  setAuthError(false);
+                                  setPatternOverlayTarget(app.name);
                                 }}
                                 className="px-2 py-1 rounded-lg bg-slate-200 text-[#0A1628] text-[10px] font-medium"
                               >
-                                Test
+                                Test Pattern
                               </button>
                             )}
                             <button
@@ -2167,35 +1672,8 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                         </div>
 
                         {app.locked && (
-                          <div className="flex items-center gap-1 flex-wrap">
-                            {(
-                              [
-                                [undefined, 'Global'],
-                                ['PIN_4', 'PIN'],
-                                ['PATTERN', 'Pattern'],
-                                ['PASSWORD', 'Password'],
-                              ] as Array<[SimLockMethod | undefined, string]>
-                            ).map(([m, label]) => (
-                              <button
-                                key={label}
-                                type="button"
-                                onClick={() =>
-                                  setApps((prev) =>
-                                    prev.map((a) =>
-                                      a.packageName === app.packageName ? { ...a, overrideMethod: m } : a
-                                    )
-                                  )
-                                }
-                                className="px-2 py-0.5 rounded text-[10px]"
-                                style={
-                                  app.overrideMethod === m
-                                    ? { backgroundColor: activeTheme.accent, color: '#FFFFFF' }
-                                    : { backgroundColor: 'rgba(148,163,184,0.2)' }
-                                }
-                              >
-                                {label}
-                              </button>
-                            ))}
+                          <div className="text-[10px] font-medium text-emerald-600">
+                            Protected with Lock Pattern only
                           </div>
                         )}
                       </div>
@@ -2881,94 +2359,20 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                       className={`${cardClasses} p-3.5 space-y-2`}
                       style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
                     >
-                      <div className="text-xs font-bold">Lock Systems (4/6/Custom PIN, Pattern, Password)</div>
-                      <div className="flex flex-wrap gap-1">
-                        {(
-                          [
-                            ['PIN_4', '4-Digit PIN'],
-                            ['PIN_6', '6-Digit PIN'],
-                            ['PIN_CUSTOM', 'Custom PIN'],
-                            ['PATTERN', 'Pattern'],
-                            ['PASSWORD', 'Password'],
-                          ] as Array<[SimLockMethod, string]>
-                        ).map(([m, label]) => (
-                          <button
-                            key={m}
-                            type="button"
-                            onClick={() => {
-                              setDefaultLockMethod(m);
-                              setUnlockMethod(m);
-                            }}
-                            className="px-2 py-1 rounded-lg text-[10px] font-semibold"
-                            style={
-                              defaultLockMethod === m
-                                ? { backgroundColor: activeTheme.accent, color: '#FFFFFF' }
-                                : { backgroundColor: 'rgba(148,163,184,0.2)' }
-                            }
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
+                      <div className="text-xs font-bold">App Lock Method (Pattern Only)</div>
+                      <p className="text-[11px] opacity-75">
+                        Lock Pattern is active for all protected apps &amp; Vault (no conflicting unlock gates).
+                      </p>
                       <div className="flex flex-wrap gap-1.5 pt-1">
                         <button
                           type="button"
-                          onClick={() => setPinEditorOpen(!pinEditorOpen)}
-                          className="px-2.5 py-1.5 rounded-lg text-white text-[11px] font-semibold"
+                          onClick={() => setPatternEditorOpen(!patternEditorOpen)}
+                          className="px-3 py-1.5 rounded-lg text-white text-[11px] font-semibold"
                           style={{ backgroundColor: activeTheme.accent }}
                         >
-                          Change PIN
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPatternEditorOpen(!patternEditorOpen)}
-                          className="px-2.5 py-1.5 rounded-lg bg-slate-200 text-[#0A1628] text-[11px]"
-                        >
-                          Set Pattern
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPasswordEditorOpen(!passwordEditorOpen)}
-                          className="px-2.5 py-1.5 rounded-lg bg-slate-200 text-[#0A1628] text-[11px]"
-                        >
-                          Set Password
+                          {patternEditorOpen ? 'Close Pattern Editor' : 'Change Lock Pattern'}
                         </button>
                       </div>
-                      {pinEditorOpen && (
-                        <div className="space-y-1.5 pt-1">
-                          <input
-                            type="password"
-                            maxLength={12}
-                            value={newPinDraft}
-                            onChange={(e) => setNewPinDraft(e.target.value.replace(/\D/g, ''))}
-                            placeholder="New 4–12 digit PIN"
-                            className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs text-[#0A1628] bg-white"
-                          />
-                          <input
-                            type="password"
-                            maxLength={12}
-                            value={confirmPinDraft}
-                            onChange={(e) => setConfirmPinDraft(e.target.value.replace(/\D/g, ''))}
-                            placeholder="Confirm PIN"
-                            className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs text-[#0A1628] bg-white"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (newPinDraft.length >= 4 && newPinDraft === confirmPinDraft) {
-                                setMasterPin(newPinDraft);
-                                setNewPinDraft('');
-                                setConfirmPinDraft('');
-                                setPinEditorOpen(false);
-                              }
-                            }}
-                            className="px-3 py-1.5 rounded-lg text-white text-xs"
-                            style={{ backgroundColor: activeTheme.accent }}
-                          >
-                            Confirm &amp; Save PIN
-                          </button>
-                        </div>
-                      )}
                       {patternEditorOpen && (
                         <div className="pt-1 space-y-2">
                           <div className="grid grid-cols-3 gap-1.5 max-w-[140px]">
@@ -2990,63 +2394,31 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                               </button>
                             ))}
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (newPatternDraft.length >= 4) {
-                                setSavedPattern(newPatternDraft);
-                                setNewPatternDraft([]);
-                                setPatternEditorOpen(false);
-                              }
-                            }}
-                            className="px-3 py-1 rounded-lg text-white text-xs"
-                            style={{ backgroundColor: activeTheme.accent }}
-                          >
-                            Save Pattern ({newPatternDraft.length}/4+)
-                          </button>
+                          <div className="flex gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setNewPatternDraft([])}
+                              className="px-2.5 py-1 rounded-lg bg-slate-200 text-[#0A1628] text-xs"
+                            >
+                              Clear
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (newPatternDraft.length >= 4) {
+                                  setSavedPattern(newPatternDraft);
+                                  setNewPatternDraft([]);
+                                  setPatternEditorOpen(false);
+                                }
+                              }}
+                              className="px-3 py-1 rounded-lg text-white text-xs"
+                              style={{ backgroundColor: activeTheme.accent }}
+                            >
+                              Save Pattern ({newPatternDraft.length}/4+)
+                            </button>
+                          </div>
                         </div>
                       )}
-                      {passwordEditorOpen && (
-                        <div className="flex gap-1.5 pt-1">
-                          <input
-                            type="password"
-                            value={newPasswordDraft}
-                            onChange={(e) => setNewPasswordDraft(e.target.value)}
-                            placeholder="Alphanumeric password (6+)"
-                            className="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs text-[#0A1628] bg-white"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (newPasswordDraft.length >= 6) {
-                                setMasterPassword(newPasswordDraft);
-                                setNewPasswordDraft('');
-                                setPasswordEditorOpen(false);
-                              }
-                            }}
-                            className="px-3 py-1.5 rounded-lg text-white text-xs"
-                            style={{ backgroundColor: activeTheme.accent }}
-                          >
-                            Save
-                          </button>
-                        </div>
-                      )}
-
-                      <div className="flex items-center justify-between pt-1">
-                        <span className="text-xs">Fingerprint BiometricPrompt</span>
-                        <button
-                          type="button"
-                          onClick={() => setBiometricEnabled(!biometricEnabled)}
-                          className="px-2.5 py-1 rounded-lg text-[11px] font-semibold"
-                          style={
-                            biometricEnabled
-                              ? { backgroundColor: activeTheme.accent, color: '#FFFFFF' }
-                              : { backgroundColor: '#CBD5E1', color: '#0A1628' }
-                          }
-                        >
-                          {biometricEnabled ? 'On' : 'Off'}
-                        </button>
-                      </div>
                     </div>
 
                     <div
@@ -3132,15 +2504,10 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                           } catch {
                             // ignore
                           }
-                          setSetupAppPinInput('');
-                          setSetupAppPinConfirm('');
                           setSetupFirstPattern(null);
                           setSetupConfirmedPattern(null);
                           setSetupPatternDraft([]);
-                          setSetupPassInput('');
-                          setSetupPassConfirm('');
                           setPendingChosenDate(null);
-                          setSimHasPinSecret(true);
                           setSimAppLockConfigured(false);
                           onScreenChange('calendar');
                         }}
@@ -3225,16 +2592,106 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
           )}
         </div>
 
+        {/* Pattern Lock Only Overlay Preview */}
+        {patternOverlayTarget && (
+          <div
+            className="absolute inset-0 z-40 p-5 flex flex-col justify-between"
+            style={{ backgroundColor: activeTheme.bg, color: activeTheme.fg }}
+          >
+            <div className="text-center pt-6">
+              <div
+                className="w-16 h-16 rounded-full mx-auto flex items-center justify-center"
+                style={{ backgroundColor: activeTheme.surface }}
+              >
+                <Lock className="w-8 h-8" style={{ color: activeTheme.secondary }} />
+              </div>
+              <h3 className="mt-3 text-lg font-bold">{patternOverlayTarget}</h3>
+              <p className={`mt-1 text-xs ${authError ? 'text-rose-400' : 'opacity-75'}`}>
+                {authError
+                  ? 'Incorrect pattern. Try again.'
+                  : `Draw Lock Pattern (saved: ${savedPattern.map((x) => x + 1).join(' → ')})`}
+              </p>
+            </div>
+
+            <div className="my-4 text-center">
+              <div
+                className="grid grid-cols-3 gap-4 max-w-[180px] mx-auto p-4 rounded-2xl"
+                style={{ backgroundColor: activeTheme.surface }}
+              >
+                {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((node) => {
+                  const activeIdx = enteredPattern.indexOf(node);
+                  return (
+                    <button
+                      key={node}
+                      type="button"
+                      onClick={() => handlePatternTap(node)}
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold transition-colors"
+                      style={
+                        activeIdx >= 0
+                          ? { backgroundColor: activeTheme.secondary, color: '#0A1628' }
+                          : { backgroundColor: 'rgba(255,255,255,0.14)', color: activeTheme.fg }
+                      }
+                    >
+                      {activeIdx >= 0 ? activeIdx + 1 : node + 1}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex justify-center gap-2 mt-4">
+                <button
+                  type="button"
+                  onClick={() => setEnteredPattern([])}
+                  className="px-3 py-1.5 rounded-lg bg-white/10 text-xs"
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const matches =
+                      enteredPattern.length >= 4 &&
+                      enteredPattern.length === savedPattern.length &&
+                      enteredPattern.every((v, i) => v === savedPattern[i]);
+                    if (matches) {
+                      setEnteredPattern([]);
+                      setAuthError(false);
+                      setPatternOverlayTarget(null);
+                      setLaunchedTargetApp(null);
+                    } else {
+                      setEnteredPattern([]);
+                      setAuthError(true);
+                    }
+                  }}
+                  className="px-4 py-1.5 rounded-lg text-white text-xs font-semibold"
+                  style={{ backgroundColor: activeTheme.accent }}
+                >
+                  Verify Pattern
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setEnteredPattern([]);
+                setAuthError(false);
+                setPatternOverlayTarget(null);
+                setLaunchedTargetApp(null);
+              }}
+              className="pb-4 text-xs font-medium"
+              style={{ color: activeTheme.secondary }}
+            >
+              Return to Home Screen
+            </button>
+          </div>
+        )}
+
         {/* Android Gesture Bar */}
         <div className="py-2.5 flex justify-center shrink-0">
           <button
             type="button"
             onClick={() =>
-              onScreenChange(
-                activeScreen === 'calendar' || activeScreen === 'unlock'
-                  ? activeScreen
-                  : 'dashboard'
-              )
+              onScreenChange(activeScreen === 'calendar' ? activeScreen : 'dashboard')
             }
             className="w-28 h-1 rounded-full bg-white/35 hover:bg-white/60 transition-colors"
             aria-label="Return to Dashboard"

@@ -10,8 +10,9 @@ import com.securelock.ai.data.LocalSettingsState
 import com.securelock.ai.security.PermissionHelper
 
 /**
- * Coordinates the real Android app-lock enforcement engines (Accessibility + UsageStats foreground monitor)
- * and resolves human-readable target app labels for lock overlays.
+ * Coordinates the single active Android app-lock detection engine.
+ * When AccessibilityService is enabled, it handles locking directly and stops the polling
+ * foreground service so two engines never race or conflict.
  */
 object AppLockServiceController {
 
@@ -37,15 +38,16 @@ object AppLockServiceController {
     fun syncMonitorService(context: Context, settings: LocalSettingsState) {
         val appContext = context.applicationContext
         val shouldProtect = needsAppProtection(settings)
+        val accessibilityEnabled = PermissionHelper.isAccessibilityServiceEnabled(appContext)
         val usageGranted = PermissionHelper.hasUsageStatsPermission(appContext)
         val overlayGranted = Settings.canDrawOverlays(appContext)
 
-        if (shouldProtect && usageGranted && overlayGranted) {
+        if (shouldProtect && !accessibilityEnabled && usageGranted && overlayGranted) {
             runCatching {
                 val intent = Intent(appContext, AppLockMonitorService::class.java)
                 ContextCompat.startForegroundService(appContext, intent)
             }
-        } else if (!shouldProtect && AppLockMonitorService.isRunning) {
+        } else if (AppLockMonitorService.isRunning) {
             runCatching {
                 val stopIntent = Intent(appContext, AppLockMonitorService::class.java).apply {
                     action = AppLockMonitorService.ACTION_STOP

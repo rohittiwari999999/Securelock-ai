@@ -6,13 +6,25 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Coordinates automatic relocking, lock-on-screen-off, and configurable grace timeouts
- * for unlocked apps and for SecureLock AI & Secret Gallery Vault across lifecycle transitions.
+ * Coordinates automatic relocking, lock-on-screen-off, configurable grace timeouts,
+ * and single-flight LockOverlayActivity launches across Accessibility & Monitor services
+ * so both services can never launch conflicting overlays simultaneously.
  */
 object AppLockSessionManager {
 
     private val unlockedUntilMillis = ConcurrentHashMap<String, Long>()
     private val activeVisitUnlocked = ConcurrentHashMap.newKeySet<String>()
+    private val launchLock = Any()
+
+    @Volatile
+    private var lastOverlayLaunchPackage: String? = null
+
+    @Volatile
+    private var lastOverlayLaunchAtMillis: Long = 0L
+
+    @Volatile
+    var activeOverlayPackage: String? = null
+        private set
 
     private val _vaultUnlockedFlow = MutableStateFlow(false)
     val vaultUnlockedFlow: StateFlow<Boolean> = _vaultUnlockedFlow.asStateFlow()
@@ -34,6 +46,25 @@ object AppLockSessionManager {
 
     fun setInternalFlowSuspendedForPicker(active: Boolean) {
         isInternalFlowSuspendedForPicker = active
+    }
+
+    fun setOverlayActive(packageName: String?) {
+        activeOverlayPackage = packageName
+    }
+
+    fun tryAcquireOverlayLaunch(packageName: String, cooldownMillis: Long = 1_200L): Boolean {
+        synchronized(launchLock) {
+            if (activeOverlayPackage == packageName) return false
+            val now = System.currentTimeMillis()
+            if (lastOverlayLaunchPackage == packageName &&
+                now - lastOverlayLaunchAtMillis < cooldownMillis
+            ) {
+                return false
+            }
+            lastOverlayLaunchPackage = packageName
+            lastOverlayLaunchAtMillis = now
+            return true
+        }
     }
 
     fun unlockVault() {
@@ -70,6 +101,15 @@ object AppLockSessionManager {
     }
 
     fun markAppUnlocked(packageName: String, timeoutSeconds: Int) {
+        synchronized(launchLock) {
+            if (activeOverlayPackage == packageName) {
+                activeOverlayPackage = null
+            }
+            if (lastOverlayLaunchPackage == packageName) {
+                lastOverlayLaunchPackage = null
+                lastOverlayLaunchAtMillis = 0L
+            }
+        }
         if (timeoutSeconds <= 0) {
             activeVisitUnlocked.add(packageName)
             unlockedUntilMillis[packageName] = System.currentTimeMillis() + 600L
@@ -79,16 +119,23 @@ object AppLockSessionManager {
         }
     }
 
+    fun isSystemTransientPackage(packageName: String, ownPackage: String): Boolean {
+        return packageName == ownPackage ||
+            packageName == "com.android.systemui" ||
+            packageName == "android" ||
+            packageName == "com.android.permissioncontroller" ||
+            packageName == "com.google.android.permissioncontroller" ||
+            packageName == "com.android.packageinstaller" ||
+            packageName == "com.google.android.packageinstaller" ||
+            packageName.contains("inputmethod", ignoreCase = true)
+    }
+
     fun onForegroundPackageObserved(
         observedPackage: String,
         ownPackage: String,
         timeoutSeconds: Int
     ) {
-        if (observedPackage == ownPackage ||
-            observedPackage == "com.android.systemui" ||
-            observedPackage == "android" ||
-            observedPackage.contains("inputmethod", ignoreCase = true)
-        ) {
+        if (isSystemTransientPackage(observedPackage, ownPackage)) {
             return
         }
         if (timeoutSeconds <= 0 && activeVisitUnlocked.isNotEmpty()) {

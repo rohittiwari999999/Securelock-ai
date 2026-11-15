@@ -4,6 +4,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -55,6 +56,7 @@ import com.securelock.ai.security.SecureStorageRepository
 import com.securelock.ai.service.AppLockMonitorService
 import com.securelock.ai.service.AppLockServiceController
 import com.securelock.ai.service.AppLockSessionManager
+import com.securelock.ai.ui.components.PatternLockPad
 import com.securelock.ai.ui.components.SecureTopBar
 import com.securelock.ai.ui.components.WhiteSecurityCard
 import com.securelock.ai.ui.theme.AmberWarn
@@ -74,10 +76,13 @@ fun AppLockScreen(
 
     var permissions by remember { mutableStateOf(PermissionHelper.getSnapshot(context)) }
     val monitorRunning by AppLockMonitorService.isRunningFlow.collectAsState()
+    var hasPattern by remember { mutableStateOf(repository.hasPatternConfigured()) }
+    var showPatternSetupDialog by remember { mutableStateOf(false) }
     var pendingPermissionPromptApp by remember { mutableStateOf<String?>(null) }
 
     fun refreshAndSyncEngine() {
         permissions = PermissionHelper.getSnapshot(context)
+        hasPattern = repository.hasPatternConfigured()
         AppLockServiceController.syncMonitorService(context, repository.settings.value)
     }
 
@@ -106,7 +111,7 @@ fun AppLockScreen(
     val engineActive = permissions.accessibilityEnabled ||
         (permissions.usageStatsGranted && permissions.overlayGranted && monitorRunning)
 
-    val installedApps = remember(context, settings.protectedPackages, settings.perAppLockMethods) {
+    val installedApps = remember(context, settings.protectedPackages) {
         val pm = context.packageManager
         val mainIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         val resolved = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -133,7 +138,7 @@ fun AppLockScreen(
                     packageName = pkg,
                     appName = label,
                     isLocked = settings.protectedPackages.contains(pkg),
-                    overrideMethod = settings.perAppLockMethods[pkg]
+                    overrideMethod = LockMethod.PATTERN
                 )
             }
             .sortedWith(compareByDescending<InstalledAppItem> { it.isLocked }.thenBy { it.appName.lowercase() })
@@ -152,7 +157,7 @@ fun AppLockScreen(
         topBar = {
             SecureTopBar(
                 title = "App Lock",
-                subtitle = "${settings.protectedPackages.size} apps protected",
+                subtitle = "${settings.protectedPackages.size} apps · Lock Pattern Only",
                 onBack = onBack
             )
         }
@@ -204,53 +209,48 @@ fun AppLockScreen(
 
                         Text(
                             text = if (engineActive) {
-                                "Monitoring active (${if (permissions.accessibilityEnabled) "Accessibility" else "Usage Access"} + Overlay). Opening locked apps triggers your lock screen immediately."
+                                if (permissions.accessibilityEnabled) {
+                                    "Accessibility Lock Pattern engine active (single-engine mode — zero conflict)."
+                                } else {
+                                    "Usage Access + Overlay Lock Pattern engine active."
+                                }
                             } else {
-                                "To actually lock WhatsApp and other apps when opened on Android, grant Display Over Other Apps plus Accessibility Service (instant) or Usage Access:"
+                                "To lock WhatsApp and other apps with your Lock Pattern, enable Accessibility Service (recommended) or Display Over Other Apps + Usage Access:"
                             },
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "• Display Over Other Apps: ${if (permissions.overlayGranted) "Granted" else "Missing"}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = if (permissions.overlayGranted) EmeraldSafe else CrimsonAlert
-                            )
+                        Text(
+                            text = "• Lock Pattern: ${if (hasPattern) "Configured (Pattern Only)" else "Not set yet"}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (hasPattern) EmeraldSafe else CrimsonAlert
+                        )
+
+                        Text(
+                            text = "• Display Over Other Apps: ${if (permissions.overlayGranted) "Granted" else "Missing"}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (permissions.overlayGranted) EmeraldSafe else CrimsonAlert
+                        )
+
+                        val detectLabel = when {
+                            permissions.accessibilityEnabled -> "Accessibility Active (Instant)"
+                            permissions.usageStatsGranted -> "Usage Access Granted"
+                            else -> "Missing (Enable Accessibility or Usage Access)"
                         }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            val detectLabel = when {
-                                permissions.accessibilityEnabled -> "Accessibility Active (Instant)"
-                                permissions.usageStatsGranted -> "Usage Access Granted"
-                                else -> "Missing (Enable Accessibility or Usage Access)"
-                            }
-                            Text(
-                                text = "• App Detection: $detectLabel",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = if (permissions.accessibilityEnabled || permissions.usageStatsGranted) EmeraldSafe else CrimsonAlert
-                            )
-                        }
+                        Text(
+                            text = "• App Detection: $detectLabel",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (permissions.accessibilityEnabled || permissions.usageStatsGranted) EmeraldSafe else CrimsonAlert
+                        )
 
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (!permissions.overlayGranted) {
-                                item {
-                                    Button(
-                                        onClick = {
-                                            launchExternalPermissionSettings(
-                                                PermissionHelper.overlaySettingsIntent(context)
-                                            )
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                                    ) {
-                                        Text("Enable Overlay")
-                                    }
+                            item {
+                                Button(
+                                    onClick = { showPatternSetupDialog = true },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                                ) {
+                                    Text(if (hasPattern) "Change Lock Pattern" else "Set Lock Pattern")
                                 }
                             }
                             if (!permissions.accessibilityEnabled) {
@@ -264,6 +264,17 @@ fun AppLockScreen(
                                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                                     ) {
                                         Text("Enable Accessibility")
+                                    }
+                                }
+                            }
+                            if (!permissions.overlayGranted) {
+                                item {
+                                    OutlinedButton(onClick = {
+                                        launchExternalPermissionSettings(
+                                            PermissionHelper.overlaySettingsIntent(context)
+                                        )
+                                    }) {
+                                        Text("Enable Overlay")
                                     }
                                 }
                             }
@@ -308,7 +319,7 @@ fun AppLockScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Protect Android Settings", style = MaterialTheme.typography.titleMedium)
                                 Text(
-                                    "Prompt unlock when System Settings opens",
+                                    "Require Lock Pattern when System Settings opens",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -378,76 +389,105 @@ fun AppLockScreen(
 
             items(filteredApps, key = { it.packageName }) { app ->
                 WhiteSecurityCard {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(app.appName, style = MaterialTheme.typography.titleMedium)
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    app.packageName,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Switch(
-                                checked = app.isLocked,
-                                onCheckedChange = { shouldLock ->
-                                    repository.updateSettings { current ->
-                                        val updatedSet = if (shouldLock) {
-                                            current.protectedPackages + app.packageName
-                                        } else {
-                                            current.protectedPackages - app.packageName
-                                        }
-                                        current.copy(protectedPackages = updatedSet)
-                                    }
-                                    if (shouldLock && !AppLockServiceController.hasRequiredOverlayOrAccessibility(context)) {
-                                        pendingPermissionPromptApp = app.appName
-                                    }
-                                }
-                            )
-                        }
-
-                        if (app.isLocked) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(app.appName, style = MaterialTheme.typography.titleMedium)
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "Per-App Lock Method",
+                                text = if (app.isLocked) "${app.packageName} · Pattern Lock" else app.packageName,
                                 style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (app.isLocked) EmeraldSafe else MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                item {
-                                    FilterChip(
-                                        selected = app.overrideMethod == null,
-                                        onClick = {
-                                            repository.updateSettings { current ->
-                                                current.copy(perAppLockMethods = current.perAppLockMethods - app.packageName)
-                                            }
-                                        },
-                                        label = { Text("Global") }
+                        }
+                        Switch(
+                            checked = app.isLocked,
+                            onCheckedChange = { shouldLock ->
+                                repository.updateSettings { current ->
+                                    val updatedSet = if (shouldLock) {
+                                        current.protectedPackages + app.packageName
+                                    } else {
+                                        current.protectedPackages - app.packageName
+                                    }
+                                    current.copy(
+                                        protectedPackages = updatedSet,
+                                        preferredLockMethod = LockMethod.PATTERN,
+                                        biometricEnabled = false,
+                                        protectionScreenConfig = current.protectionScreenConfig.copy(enabled = false)
                                     )
                                 }
-                                items(LockMethod.entries) { method ->
-                                    FilterChip(
-                                        selected = app.overrideMethod == method,
-                                        onClick = {
-                                            repository.updateSettings { current ->
-                                                current.copy(
-                                                    perAppLockMethods = current.perAppLockMethods + (app.packageName to method)
-                                                )
-                                            }
-                                        },
-                                        label = { Text(method.label) }
-                                    )
+                                if (shouldLock && !repository.hasPatternConfigured()) {
+                                    showPatternSetupDialog = true
+                                } else if (shouldLock && !AppLockServiceController.hasRequiredOverlayOrAccessibility(context)) {
+                                    pendingPermissionPromptApp = app.appName
                                 }
                             }
-                        }
+                        )
                     }
                 }
             }
         }
+    }
+
+    if (showPatternSetupDialog) {
+        var firstPattern by remember { mutableStateOf<List<Int>?>(null) }
+        var hint by remember { mutableStateOf("Draw your Lock Pattern (4+ dots)") }
+        AlertDialog(
+            onDismissRequest = { showPatternSetupDialog = false },
+            title = { Text(if (hasPattern) "Change Lock Pattern" else "Set Lock Pattern") },
+            text = {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = hint,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        PatternLockPad(
+                            onPatternComplete = { nodes ->
+                                if (nodes.size < 4) {
+                                    hint = "Connect at least 4 dots"
+                                } else if (firstPattern == null) {
+                                    firstPattern = nodes
+                                    hint = "Draw the same pattern again to confirm"
+                                } else if (firstPattern == nodes) {
+                                    repository.setPattern(nodes)
+                                    repository.updateSettings {
+                                        it.copy(
+                                            preferredLockMethod = LockMethod.PATTERN,
+                                            biometricEnabled = false,
+                                            protectionScreenConfig = it.protectionScreenConfig.copy(enabled = false)
+                                        )
+                                    }
+                                    hasPattern = true
+                                    showPatternSetupDialog = false
+                                    if (!AppLockServiceController.hasRequiredOverlayOrAccessibility(context)) {
+                                        pendingPermissionPromptApp = "Protected Apps"
+                                    }
+                                } else {
+                                    firstPattern = null
+                                    hint = "Patterns did not match. Draw again."
+                                }
+                            }
+                        )
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showPatternSetupDialog = false }) { Text("Cancel") }
+            }
+        )
     }
 
     pendingPermissionPromptApp?.let { appName ->
@@ -457,21 +497,9 @@ fun AppLockScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "$appName is now in your locked list, but Android requires system permissions below before any app lock screen can appear over $appName:",
+                        text = "$appName is protected with your Lock Pattern. Enable Accessibility Monitor (instant) or Display Over Other Apps + Usage Access below:",
                         style = MaterialTheme.typography.bodySmall
                     )
-                    if (!permissions.overlayGranted) {
-                        Button(
-                            onClick = {
-                                launchExternalPermissionSettings(
-                                    PermissionHelper.overlaySettingsIntent(context)
-                                )
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("1. Allow Display Over Other Apps")
-                        }
-                    }
                     if (!permissions.accessibilityEnabled) {
                         Button(
                             onClick = {
@@ -481,7 +509,19 @@ fun AppLockScreen(
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("2. Turn ON Accessibility Monitor (Instant)")
+                            Text("1. Turn ON Accessibility Monitor (Instant)")
+                        }
+                    }
+                    if (!permissions.overlayGranted) {
+                        OutlinedButton(
+                            onClick = {
+                                launchExternalPermissionSettings(
+                                    PermissionHelper.overlaySettingsIntent(context)
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Allow Display Over Other Apps")
                         }
                     }
                     if (!permissions.usageStatsGranted) {
@@ -493,7 +533,7 @@ fun AppLockScreen(
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Or Grant Usage Access")
+                            Text("Grant Usage Access")
                         }
                     }
                 }

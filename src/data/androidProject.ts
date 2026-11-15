@@ -10,7 +10,6 @@ export interface ProjectFileEntry {
 
 export type SimulatorScreenId =
   | 'calendar'
-  | 'unlock'
   | 'dashboard'
   | 'app_lock'
   | 'vault'
@@ -84,28 +83,13 @@ export const SCREEN_SPECS: Record<SimulatorScreenId, ScreenArchitectureSpec> = {
     apis: [
       'SecureLockNavHost startDestination = Routes.CALENDAR_LAUNCH',
       'SecretDateUnlockEvaluator (5-tap + 4s timeout + month/background reset)',
-      'AndroidKeyStore AES-256-GCM + PBKDF2WithHmacSHA256 Secret PIN',
-      'Rate-limited verification & process-recreation guard',
+      'Step 2 Lock Pattern Setup (PBKDF2WithHmacSHA256 + Keystore)',
+      'Direct Dashboard unlock with zero extra Unlock Gate',
     ],
     androidCompatibility:
       'Launches directly as a standalone Material 3 monthly Calendar on Android 8.0–16 without flashing the dashboard. Back-press and backgrounding relock cleanly.',
     summary:
-      'Every app launch opens a genuine monthly Calendar with zero AppLock branding. Navigate to your secret month/year and tap the secret date 5 times to open the discreet PIN prompt.',
-  },
-  unlock: {
-    id: 'unlock',
-    title: 'Multi-Method Unlock Gate & Biometrics',
-    kotlinPath: 'app/src/main/java/com/securelock/ai/ui/screens/UnlockScreen.kt',
-    apis: [
-      'androidx.biometric.BiometricPrompt',
-      '4-digit / 6-digit / Custom PIN + Pattern + Password',
-      'PBKDF2WithHmacSHA256 (120,000 iterations)',
-      'Per-app LockMethod resolution',
-    ],
-    androidCompatibility:
-      'MainActivity extends FragmentActivity for BiometricPrompt compatibility on Android 8.0–16. Dynamically adopts all 8 themes and custom accent colors.',
-    summary:
-      'Supports 4/6/custom PINs, 3x3 Pattern Lock, Alphanumeric Passwords, and BiometricPrompt with configurable intruder attempt threshold and foreground snapshot prompt.',
+      'Every app launch opens a genuine monthly Calendar with zero AppLock branding. Tap the Secret Date 5 times to open the SecureLock AI Dashboard directly.',
   },
   dashboard: {
     id: 'dashboard',
@@ -123,18 +107,18 @@ export const SCREEN_SPECS: Record<SimulatorScreenId, ScreenArchitectureSpec> = {
   },
   app_lock: {
     id: 'app_lock',
-    title: 'App Lock & Per-App Auth Preferences',
-    kotlinPath: 'app/src/main/java/com/securelock/ai/ui/screens/AppLockScreen.kt',
+    title: 'App Lock (Pattern Lock Only)',
+    kotlinPath: 'app/src/main/java/com/securelock/ai/LockOverlayActivity.kt',
     apis: [
-      'PackageManager.queryIntentActivities (<queries>)',
-      'Per-app LockMethod overrides',
+      'LockOverlayActivity (PatternLockPad + FLAG_SECURE)',
+      'AppLockAccessibilityService / AppLockMonitorService (single-flight)',
       'Intent.ACTION_SCREEN_OFF immediate relock',
-      'UsageStatsManager / Accessibility + Overlay',
+      'PackageManager.queryIntentActivities (<queries>)',
     ],
     androidCompatibility:
-      'Uses <queries> for ACTION_MAIN + CATEGORY_LAUNCHER on Android 11–16. Discloses Usage Access / Accessibility + Display Over Other Apps requirements honestly.',
+      'Single-engine coordination prevents Accessibility and UsageStats services from firing conflicting overlays. Uses Lock Pattern only across Android 8.0–16.',
     summary:
-      'Select installed apps, assign per-app lock methods (PIN, pattern, password), enable lock-on-screen-off, and configure relock delays.',
+      'Select installed apps like WhatsApp and protect them with a unified 3x3 Lock Pattern without conflicting PIN, Password, Biometric, or Decoy unlock gates.',
   },
   vault: {
     id: 'vault',
