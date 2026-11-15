@@ -59,6 +59,7 @@ import com.securelock.ai.security.SecureStorageRepository
 import com.securelock.ai.service.AppLockMonitorService
 import com.securelock.ai.service.AppLockServiceController
 import com.securelock.ai.service.AppLockSessionManager
+import com.securelock.ai.ui.components.AccessibilityHelpDialog
 import com.securelock.ai.ui.components.PatternLockPad
 import com.securelock.ai.ui.components.SecureTopBar
 import com.securelock.ai.ui.components.WhiteSecurityCard
@@ -83,7 +84,11 @@ fun AppLockScreen(
     var hasPin by remember { mutableStateOf(repository.hasPinConfigured()) }
     var showPatternSetupDialog by remember { mutableStateOf(false) }
     var showPinSetupDialog by remember { mutableStateOf(false) }
+    var showAccessibilityHelpDialog by remember { mutableStateOf(false) }
     var pendingPermissionPromptApp by remember { mutableStateOf<String?>(null) }
+    val accessibilityDeclared = remember(context) {
+        PermissionHelper.hasAccessibilityServiceDeclared(context)
+    }
 
     fun refreshAndSyncEngine() {
         permissions = PermissionHelper.getSnapshot(context)
@@ -109,6 +114,11 @@ fun AppLockScreen(
     fun launchExternalPermissionSettings(intent: Intent) {
         AppLockSessionManager.setInternalFlowSuspendedForPicker(true)
         runCatching { context.startActivity(intent) }
+    }
+
+    fun launchAccessibilityDirectly() {
+        AppLockSessionManager.setInternalFlowSuspendedForPicker(true)
+        PermissionHelper.launchAccessibilitySettings(context)
     }
 
     val engineReady = permissions.accessibilityEnabled ||
@@ -251,17 +261,24 @@ fun AppLockScreen(
                         )
 
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (!permissions.accessibilityEnabled) {
+                            if (accessibilityDeclared && !permissions.accessibilityEnabled) {
                                 item {
                                     Button(
-                                        onClick = {
-                                            launchExternalPermissionSettings(
-                                                PermissionHelper.accessibilitySettingsIntent()
-                                            )
-                                        },
+                                        onClick = { launchAccessibilityDirectly() },
                                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                                     ) {
-                                        Text("Enable Accessibility")
+                                        Text("Open Accessibility Directly")
+                                    }
+                                }
+                                item {
+                                    OutlinedButton(onClick = { showAccessibilityHelpDialog = true }) {
+                                        Text("Accessibility Help")
+                                    }
+                                }
+                            } else if (accessibilityDeclared && permissions.accessibilityEnabled) {
+                                item {
+                                    OutlinedButton(onClick = { showAccessibilityHelpDialog = true }) {
+                                        Text("Accessibility Guide")
                                     }
                                 }
                             }
@@ -642,16 +659,21 @@ fun AppLockScreen(
                         text = "$appName is protected. Enable Accessibility Monitor (instant) or Display Over Other Apps + Usage Access below:",
                         style = MaterialTheme.typography.bodySmall
                     )
-                    if (!permissions.accessibilityEnabled) {
+                    if (accessibilityDeclared && !permissions.accessibilityEnabled) {
                         Button(
+                            onClick = { launchAccessibilityDirectly() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("1. Open Accessibility Directly (Instant)")
+                        }
+                        OutlinedButton(
                             onClick = {
-                                launchExternalPermissionSettings(
-                                    PermissionHelper.accessibilitySettingsIntent()
-                                )
+                                pendingPermissionPromptApp = null
+                                showAccessibilityHelpDialog = true
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("1. Turn ON Accessibility Monitor (Instant)")
+                            Text("How to Enable Accessibility & Restricted Settings")
                         }
                     }
                     if (!permissions.overlayGranted) {
@@ -695,6 +717,32 @@ fun AppLockScreen(
                 }) {
                     Text("Open Permissions")
                 }
+            }
+        )
+    }
+
+    if (showAccessibilityHelpDialog) {
+        AccessibilityHelpDialog(
+            isAlreadyEnabled = permissions.accessibilityEnabled,
+            onDismiss = {
+                showAccessibilityHelpDialog = false
+                refreshAndSyncEngine()
+            },
+            onOpenAccessibilitySettings = { launchAccessibilityDirectly() },
+            onOpenAppInfo = {
+                launchExternalPermissionSettings(
+                    PermissionHelper.appPrivacySettingsIntent(context)
+                )
+            },
+            onOpenOverlaySettings = {
+                launchExternalPermissionSettings(
+                    PermissionHelper.overlaySettingsIntent(context)
+                )
+            },
+            onOpenUsageAccessSettings = {
+                launchExternalPermissionSettings(
+                    PermissionHelper.usageAccessSettingsIntent()
+                )
             }
         )
     }

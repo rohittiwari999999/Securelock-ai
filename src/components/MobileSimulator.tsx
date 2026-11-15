@@ -258,6 +258,8 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
   const [foregroundPromptEnabled, setForegroundPromptEnabled] = useState(true);
   const [intruderThreshold, setIntruderThreshold] = useState(3);
   const [lockNotificationsEnabled, setLockNotificationsEnabled] = useState(true);
+  const [simAccessibilityEnabled, setSimAccessibilityEnabled] = useState(false);
+  const [showAccessibilityHelp, setShowAccessibilityHelp] = useState(false);
   const [recoveryCode, setRecoveryCode] = useState('7K4M-9P2X-Q8WN');
 
   // Calendar Launch Disguise & Secret Date State (persisted once after initial setup)
@@ -1757,6 +1759,48 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                       className={`${cardClasses} p-3.5 space-y-2`}
                       style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
                     >
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <div className="text-xs font-bold">Real-Time Protection Engine</div>
+                          <div className="text-[11px] opacity-70">
+                            {simAccessibilityEnabled
+                              ? 'Accessibility Active (Instant Lock)'
+                              : 'Usage Access + Overlay Active (Accessibility Optional)'}
+                          </div>
+                        </div>
+                        <span
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                            simAccessibilityEnabled
+                              ? 'bg-emerald-500/15 text-emerald-600'
+                              : 'bg-amber-500/15 text-amber-600'
+                          }`}
+                        >
+                          {simAccessibilityEnabled ? 'INSTANT' : 'SETUP'}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setShowAccessibilityHelp(true)}
+                          className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-white"
+                          style={{ backgroundColor: activeTheme.accent }}
+                        >
+                          {simAccessibilityEnabled ? 'Accessibility Guide' : 'Open Accessibility / Help'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSimAccessibilityEnabled(!simAccessibilityEnabled)}
+                          className="px-2.5 py-1.5 rounded-lg bg-slate-200 text-[#0A1628] text-[11px] font-medium"
+                        >
+                          {simAccessibilityEnabled ? 'Turn Off' : 'Simulate Enable'}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div
+                      className={`${cardClasses} p-3.5 space-y-2`}
+                      style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
+                    >
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="text-xs font-bold">Lock on Screen Off</div>
@@ -2817,20 +2861,28 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                 {activeScreen === 'permissions' && (
                   <div className="space-y-2.5">
                     {[
-                      { name: 'Display Over Other Apps', api: 'SYSTEM_ALERT_WINDOW', state: 'Granted', ok: true },
-                      { name: 'Usage Access', api: 'PACKAGE_USAGE_STATS', state: 'Granted', ok: true },
-                      { name: 'Accessibility Service', api: 'Optional Alternative', state: 'Optional', ok: false },
+                      { name: 'Display Over Other Apps', api: 'SYSTEM_ALERT_WINDOW', state: 'Granted', ok: true, isAcc: false },
+                      { name: 'Usage Access', api: 'PACKAGE_USAGE_STATS', state: 'Granted', ok: true, isAcc: false },
+                      {
+                        name: 'Accessibility Service (Instant Lock)',
+                        api: 'SecureLock App Protection Monitor',
+                        state: simAccessibilityEnabled ? 'Granted' : 'Tap for Help / Direct Open',
+                        ok: simAccessibilityEnabled,
+                        isAcc: true,
+                      },
                       {
                         name: 'Notification Listener',
                         api: 'BIND_NOTIFICATION_LISTENER',
                         state: lockNotificationsEnabled ? 'Granted' : 'Off',
                         ok: lockNotificationsEnabled,
+                        isAcc: false,
                       },
                       {
                         name: 'Foreground Camera',
                         api: 'CAMERA (User-Controlled)',
                         state: cameraGranted ? 'Granted' : 'Denied',
                         ok: cameraGranted,
+                        isAcc: false,
                       },
                     ].map((p) => (
                       <div
@@ -2838,13 +2890,32 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
                         className={`${cardClasses} p-3.5`}
                         style={{ backgroundColor: activeTheme.card, color: activeTheme.cardText }}
                       >
-                        <div className="flex justify-between items-center">
+                        <div className="flex justify-between items-center gap-2">
                           <span className="text-xs font-bold">{p.name}</span>
                           <span className={`text-[11px] font-semibold ${p.ok ? 'text-emerald-500' : 'text-amber-500'}`}>
                             {p.state}
                           </span>
                         </div>
                         <div className="text-[10px] font-mono opacity-65 mt-0.5">{p.api}</div>
+                        {p.isAcc && (
+                          <div className="flex gap-1.5 mt-2">
+                            <button
+                              type="button"
+                              onClick={() => setSimAccessibilityEnabled(!simAccessibilityEnabled)}
+                              className="px-2.5 py-1 rounded-lg text-[10px] font-semibold text-white"
+                              style={{ backgroundColor: activeTheme.accent }}
+                            >
+                              {simAccessibilityEnabled ? 'Review Directly' : 'Open Directly'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setShowAccessibilityHelp(true)}
+                              className="px-2.5 py-1 rounded-lg bg-slate-200 text-[#0A1628] text-[10px] font-semibold"
+                            >
+                              How to Enable (?)
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -3076,6 +3147,54 @@ export function MobileSimulator({ activeScreen, onScreenChange }: MobileSimulato
             >
               Return to Home Screen
             </button>
+          </div>
+        )}
+
+        {/* Accessibility Setup Help Prompt Preview */}
+        {showAccessibilityHelp && (
+          <div className="absolute inset-0 z-50 bg-black/70 p-4 flex items-center justify-center">
+            <div className="w-full rounded-2xl bg-white text-[#0A1628] p-4 space-y-3 shadow-2xl">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold">How to Enable Accessibility</h4>
+                <button
+                  type="button"
+                  onClick={() => setShowAccessibilityHelp(false)}
+                  className="text-slate-500 p-1"
+                  aria-label="Close accessibility help"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="rounded-xl bg-blue-50 p-3 text-[11px] space-y-1.5 text-slate-700">
+                <div>1. Tap <strong>Open Accessibility Directly</strong> below — supported phones jump straight to <strong>SecureLock App Protection Monitor</strong>.</div>
+                <div>2. Or open <strong>Downloaded apps / Installed services</strong>.</div>
+                <div>3. Tap <strong>SecureLock App Protection Monitor</strong> and turn the switch <strong>ON</strong>.</div>
+              </div>
+              <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-[11px] space-y-1 text-amber-950">
+                <div className="font-bold">Toggle greyed out / Restricted setting?</div>
+                <div>On Android 13–16 APK installs: tap <strong>Open App Info</strong> &rarr; top-right <strong>⋮ menu</strong> &rarr; <strong>Allow restricted settings</strong> &rarr; confirm PIN/Fingerprint.</div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSimAccessibilityEnabled(true);
+                    setShowAccessibilityHelp(false);
+                  }}
+                  className="flex-1 py-2 rounded-xl text-xs font-semibold text-white"
+                  style={{ backgroundColor: activeTheme.accent }}
+                >
+                  Open Accessibility Directly
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAccessibilityHelp(false)}
+                  className="px-3 py-2 rounded-xl bg-slate-200 text-[#0A1628] text-xs font-semibold"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

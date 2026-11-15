@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.PowerManager
 import android.os.Process
 import android.provider.Settings
@@ -119,8 +120,53 @@ object PermissionHelper {
             Uri.parse("package:${context.packageName}")
         ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
-    fun accessibilitySettingsIntent(): Intent =
-        Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    fun accessibilityServiceComponentName(context: Context): String =
+        ComponentName(context, AppLockAccessibilityService::class.java).flattenToString()
+
+    fun hasAccessibilityServiceDeclared(context: Context): Boolean {
+        return runCatching {
+            val comp = ComponentName(context, AppLockAccessibilityService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getServiceInfo(
+                    comp,
+                    PackageManager.ComponentInfoFlags.of(0L)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getServiceInfo(comp, 0)
+            }
+            true
+        }.getOrDefault(false)
+    }
+
+    fun accessibilitySettingsIntent(context: Context? = null): Intent {
+        val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (context != null) {
+            val componentKey = accessibilityServiceComponentName(context)
+            val bundle = Bundle().apply {
+                putString(":settings:fragment_args_key", componentKey)
+            }
+            intent.putExtra(":settings:fragment_args_key", componentKey)
+            intent.putExtra(":settings:show_fragment_args", bundle)
+        }
+        return intent
+    }
+
+    fun launchAccessibilitySettings(context: Context): Boolean {
+        val targeted = runCatching {
+            context.startActivity(accessibilitySettingsIntent(context))
+            true
+        }.getOrDefault(false)
+        if (targeted) return true
+        return runCatching {
+            context.startActivity(
+                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+            true
+        }.getOrDefault(false)
+    }
 
     fun notificationListenerSettingsIntent(): Intent =
         Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

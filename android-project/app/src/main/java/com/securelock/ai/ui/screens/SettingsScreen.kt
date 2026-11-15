@@ -53,6 +53,7 @@ import com.securelock.ai.security.SecretDateUnlockEvaluator
 import com.securelock.ai.security.SecureStorageRepository
 import com.securelock.ai.service.AppLockServiceController
 import com.securelock.ai.service.AppLockSessionManager
+import com.securelock.ai.ui.components.AccessibilityHelpDialog
 import com.securelock.ai.ui.components.PatternLockPad
 import com.securelock.ai.ui.components.SecureTopBar
 import com.securelock.ai.ui.components.WhiteSecurityCard
@@ -608,11 +609,17 @@ fun PermissionsManagerScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var snapshot by remember { mutableStateOf(PermissionHelper.getSnapshot(context)) }
+    var showAccessibilityHelpDialog by remember { mutableStateOf(false) }
     val app = remember(context) { context.applicationContext as? com.securelock.ai.SecureLockApplication }
 
     fun openPermissionSettings(intent: android.content.Intent) {
         AppLockSessionManager.setInternalFlowSuspendedForPicker(true)
         runCatching { context.startActivity(intent) }
+    }
+
+    fun openAccessibilityDirectly() {
+        AppLockSessionManager.setInternalFlowSuspendedForPicker(true)
+        PermissionHelper.launchAccessibilitySettings(context)
     }
 
     val cameraLauncher = rememberLauncherForActivityResult(
@@ -676,9 +683,12 @@ fun PermissionsManagerScreen(
             item {
                 PermissionRowCard(
                     title = "Accessibility Service (Instant Lock)",
-                    description = "Receives TYPE_WINDOW_STATE_CHANGED only (canRetrieveWindowContent = false).",
+                    description = "Receives TYPE_WINDOW_STATE_CHANGED only (canRetrieveWindowContent = false). Look for \"SecureLock App Protection Monitor\".",
                     granted = snapshot.accessibilityEnabled,
-                    onConfigure = { openPermissionSettings(PermissionHelper.accessibilitySettingsIntent()) }
+                    onConfigure = { openAccessibilityDirectly() },
+                    configureLabel = if (snapshot.accessibilityEnabled) "Review in Settings" else "Open Directly",
+                    secondaryActionLabel = "How to Enable (?)",
+                    onSecondaryAction = { showAccessibilityHelpDialog = true }
                 )
             }
             item {
@@ -717,6 +727,23 @@ fun PermissionsManagerScreen(
             }
         }
     }
+
+    if (showAccessibilityHelpDialog) {
+        AccessibilityHelpDialog(
+            isAlreadyEnabled = snapshot.accessibilityEnabled,
+            onDismiss = {
+                showAccessibilityHelpDialog = false
+                snapshot = PermissionHelper.getSnapshot(context)
+                app?.let {
+                    AppLockServiceController.syncMonitorService(context, it.storageRepository.settings.value)
+                }
+            },
+            onOpenAccessibilitySettings = { openAccessibilityDirectly() },
+            onOpenAppInfo = { openPermissionSettings(PermissionHelper.appPrivacySettingsIntent(context)) },
+            onOpenOverlaySettings = { openPermissionSettings(PermissionHelper.overlaySettingsIntent(context)) },
+            onOpenUsageAccessSettings = { openPermissionSettings(PermissionHelper.usageAccessSettingsIntent()) }
+        )
+    }
 }
 
 @Composable
@@ -724,7 +751,10 @@ private fun PermissionRowCard(
     title: String,
     description: String,
     granted: Boolean,
-    onConfigure: () -> Unit
+    onConfigure: () -> Unit,
+    configureLabel: String? = null,
+    secondaryActionLabel: String? = null,
+    onSecondaryAction: (() -> Unit)? = null
 ) {
     WhiteSecurityCard {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -742,8 +772,15 @@ private fun PermissionRowCard(
                 )
             }
             Text(description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedButton(onClick = onConfigure) {
-                Text(if (granted) "Review in Settings" else "Grant Permission")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onConfigure) {
+                    Text(configureLabel ?: if (granted) "Review in Settings" else "Grant Permission")
+                }
+                if (secondaryActionLabel != null && onSecondaryAction != null) {
+                    TextButton(onClick = onSecondaryAction) {
+                        Text(secondaryActionLabel)
+                    }
+                }
             }
         }
     }

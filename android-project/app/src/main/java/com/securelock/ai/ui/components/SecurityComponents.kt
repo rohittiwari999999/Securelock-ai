@@ -13,19 +13,25 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Backspace
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -45,11 +51,16 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.os.Build
+import com.securelock.ai.R
 import com.securelock.ai.data.CardStyleMode
+import com.securelock.ai.security.PermissionHelper
+import com.securelock.ai.ui.theme.AmberWarn
 import com.securelock.ai.ui.theme.LocalCardStyleMode
 import com.securelock.ai.ui.theme.LocalThemePalette
 import kotlin.math.hypot
@@ -390,3 +401,143 @@ private fun findNearestNode(point: Offset, width: Float, height: Float): Int? {
     }
     return null
 }
+
+@Composable
+fun AccessibilityHelpDialog(
+    isAlreadyEnabled: Boolean,
+    onDismiss: () -> Unit,
+    onOpenAccessibilitySettings: () -> Unit,
+    onOpenAppInfo: () -> Unit,
+    onOpenOverlaySettings: (() -> Unit)? = null,
+    onOpenUsageAccessSettings: (() -> Unit)? = null
+) {
+    val context = LocalContext.current
+    val serviceDeclared = remember(context) {
+        PermissionHelper.hasAccessibilityServiceDeclared(context)
+    }
+    val serviceLabel = remember(context) {
+        context.getString(R.string.accessibility_service_label)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = when {
+                    !serviceDeclared -> "Use Overlay + Usage Access"
+                    isAlreadyEnabled -> "Accessibility Service Active"
+                    else -> "How to Enable Accessibility"
+                }
+            )
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                if (!serviceDeclared) {
+                    Text(
+                        text = "This sideload APK build uses Display Over Other Apps + Usage Access instead of Accessibility Service.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    onOpenOverlaySettings?.let { openOverlay ->
+                        Button(
+                            onClick = openOverlay,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Allow Display Over Other Apps")
+                        }
+                    }
+                    onOpenUsageAccessSettings?.let { openUsage ->
+                        OutlinedButton(
+                            onClick = openUsage,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Grant Usage Access")
+                        }
+                    }
+                } else {
+                    Text(
+                        text = "Follow these steps to turn ON instant app locking:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                    ) {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp)
+                        ) {
+                            Text(
+                                text = "1. Tap \"Open Accessibility Directly\" below — supported phones jump straight to $serviceLabel.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Text(
+                                text = "2. If you see the main list, open \"Downloaded apps\" or \"Installed services\".",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Text(
+                                text = "3. Select \"$serviceLabel\" and turn the switch ON.",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = AmberWarn.copy(alpha = 0.14f)
+                        ) {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp)
+                            ) {
+                                Text(
+                                    text = "Toggle greyed out / \"Restricted setting\"?",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = AmberWarn
+                                )
+                                Text(
+                                    text = "On Android 13–16 APK installs: tap \"Open App Info\" below -> tap the ⋮ (top-right menu) -> \"Allow restricted settings\" -> confirm PIN/Fingerprint, then return here.",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                OutlinedButton(
+                                    onClick = onOpenAppInfo,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Open App Info (Allow Restricted Settings)")
+                                }
+                            }
+                        }
+                    }
+
+                    Button(
+                        onClick = onOpenAccessibilitySettings,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            if (isAlreadyEnabled) "Open Accessibility Settings"
+                            else "Open Accessibility Directly"
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Done")
+            }
+        }
+    )
+}
+
