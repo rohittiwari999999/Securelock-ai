@@ -98,14 +98,7 @@ class LockOverlayActivity : FragmentActivity() {
 
         val repository = (application as SecureLockApplication).storageRepository
         activeTargetPackage = intent.getStringExtra(EXTRA_TARGET_PACKAGE) ?: ""
-        if (activeTargetPackage.isBlank() ||
-            activeTargetPackage == packageName ||
-            AppLockSessionManager.isAppTemporarilyUnlocked(
-                packageName = activeTargetPackage,
-                timeoutSeconds = repository.settings.value.relockTimeoutSeconds,
-                currentForegroundPackage = activeTargetPackage
-            )
-        ) {
+        if (activeTargetPackage.isBlank() || activeTargetPackage == packageName) {
             finishOverlayQuietly()
             return
         }
@@ -162,16 +155,6 @@ class LockOverlayActivity : FragmentActivity() {
         setIntent(intent)
         val nextPkg = intent.getStringExtra(EXTRA_TARGET_PACKAGE)
         if (!nextPkg.isNullOrBlank() && nextPkg != packageName) {
-            val repository = (application as SecureLockApplication).storageRepository
-            if (AppLockSessionManager.isAppTemporarilyUnlocked(
-                    packageName = nextPkg,
-                    timeoutSeconds = repository.settings.value.relockTimeoutSeconds,
-                    currentForegroundPackage = nextPkg
-                )
-            ) {
-                finishOverlayQuietly()
-                return
-            }
             activeTargetPackage = nextPkg
             AppLockSessionManager.setOverlayActive(nextPkg)
         }

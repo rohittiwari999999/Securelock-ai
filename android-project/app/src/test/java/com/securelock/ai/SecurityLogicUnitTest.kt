@@ -79,7 +79,7 @@ class SecurityLogicUnitTest {
     fun defaultSettings_enforceOfflineSafeAndThemeDefaults() {
         val defaults = LocalSettingsState()
         assertTrue(defaults.biometricEnabled)
-        assertEquals(-1, defaults.relockTimeoutSeconds)
+        assertEquals(30, defaults.relockTimeoutSeconds)
         assertTrue(defaults.lockOnScreenOff)
         assertTrue(defaults.safeBrowsingWarningsEnabled)
         assertTrue(defaults.foregroundIntruderPromptEnabled)

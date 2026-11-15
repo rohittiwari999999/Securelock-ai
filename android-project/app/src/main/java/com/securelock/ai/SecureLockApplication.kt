@@ -52,8 +52,8 @@ class SecureLockApplication : Application(), DefaultLifecycleObserver {
         vaultRepository.wipeTempPlaybackFiles()
         val timeoutSeconds = storageRepository.settings.value.relockTimeoutSeconds
         val secretDateActive = storageRepository.isSecretDateUnlockActive()
-        if (timeoutSeconds == 0 ||
-            (secretDateActive && !AppLockSessionManager.isInternalFlowSuspendedForPicker)
+        if (!AppLockSessionManager.isInternalFlowSuspendedForPicker &&
+            (timeoutSeconds == 0 || secretDateActive)
         ) {
             AppLockSessionManager.lockVault()
         } else {

@@ -470,18 +470,19 @@ fun AppLockScreen(
                         }
 
                         Text(
-                            text = "Auto-Relock in Background (always stays open while using the app)",
+                            text = "Auto-Relock Delay (counts after leaving the app)",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(
                                 listOf(
-                                    -1 to "Until Screen Off",
-                                    0 to "On Exit",
-                                    30 to "30s Bg",
-                                    120 to "2m Bg",
-                                    300 to "5m Bg"
+                                    0 to "Immediate",
+                                    15 to "15s",
+                                    30 to "30s",
+                                    120 to "2m",
+                                    300 to "5m",
+                                    -1 to "Screen Off"
                                 )
                             ) { (sec, label) ->
                                 FilterChip(

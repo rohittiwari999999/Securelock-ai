@@ -107,18 +107,18 @@ export const SCREEN_SPECS: Record<SimulatorScreenId, ScreenArchitectureSpec> = {
   },
   app_lock: {
     id: 'app_lock',
-    title: 'App Lock (Pattern Lock Only)',
+    title: 'App Lock (Pattern · PIN · Fingerprint)',
     kotlinPath: 'app/src/main/java/com/securelock/ai/LockOverlayActivity.kt',
     apis: [
-      'LockOverlayActivity (PatternLockPad + FLAG_SECURE)',
+      'LockOverlayActivity (singleTask + Pattern, PIN, BiometricPrompt + FLAG_SECURE)',
       'AppLockAccessibilityService / AppLockMonitorService (single-flight)',
-      'Intent.ACTION_SCREEN_OFF immediate relock',
+      'AppLockSessionManager (foreground-persistent + background timer + screen-off relock)',
       'PackageManager.queryIntentActivities (<queries>)',
     ],
     androidCompatibility:
-      'Single-engine coordination prevents Accessibility and UsageStats services from firing conflicting overlays. Uses Lock Pattern only across Android 8.0–16.',
+      'Single-engine coordination prevents Accessibility and UsageStats services from firing conflicting overlays. Unlocking hands off directly to the target app task on Android 8.0–16.',
     summary:
-      'Select installed apps like WhatsApp and protect them with a unified 3x3 Lock Pattern without conflicting PIN, Password, Biometric, or Decoy unlock gates.',
+      'Protect installed apps like WhatsApp with Pattern, PIN, and Fingerprint on one unified overlay, keeping the unlocked app open immediately and re-locking after your chosen delay.',
   },
   vault: {
     id: 'vault',
